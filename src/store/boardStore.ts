@@ -1,0 +1,172 @@
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import {
+  boardConfig,
+  createDefaultScene,
+  type BallState,
+  type RodId,
+  type RodState,
+  type SavedScene,
+  type SerializableScene,
+  type ShotLine,
+} from '../boardConfig';
+import { clamp, createId } from '../geometry';
+
+export type ToolMode = 'move' | 'shot' | 'pass';
+
+interface BoardStore extends SerializableScene {
+  activeTool: ToolMode;
+  snapshots: SavedScene[];
+  setBall: (point: BallState) => void;
+  moveRod: (rodId: RodId, y: number) => void;
+  cycleRodTilt: (rodId: RodId) => void;
+  addShot: (shot: Omit<ShotLine, 'id' | 'label'>) => void;
+  removeShot: (shotId: string) => void;
+  setActiveTool: (tool: ToolMode) => void;
+  setActiveShotColor: (color: string) => void;
+  toggleGuides: () => void;
+  toggleFiveGoalPositions: () => void;
+  saveSnapshot: (name: string) => void;
+  loadSnapshot: (snapshotId: string) => void;
+  deleteSnapshot: (snapshotId: string) => void;
+  resetScene: () => void;
+  hydrateScene: (scene: Partial<SerializableScene>) => void;
+}
+
+function createSnapshot(scene: SerializableScene, name: string): SavedScene {
+  return {
+    id: createId('snapshot'),
+    name,
+    createdAt: Date.now(),
+    scene: JSON.parse(JSON.stringify(scene)) as SerializableScene,
+  };
+}
+
+function buildLabel(kind: ShotLine['kind'], index: number): string {
+  const prefix = kind === 'shot' ? 'Schuss' : 'Pass';
+  return `${prefix} ${index + 1}`;
+}
+
+function createSceneFromDefaults(): SerializableScene {
+  return createDefaultScene();
+}
+
+function cycleTiltValue(currentTilt: RodState['tilt']): RodState['tilt'] {
+  switch (currentTilt) {
+    case 'neutral':
+      return 'front';
+    case 'front':
+      return 'back';
+    default:
+      return 'neutral';
+  }
+}
+
+export const useBoardStore = create<BoardStore>()(
+  persist(
+    (set, get) => ({
+      ...createSceneFromDefaults(),
+      activeTool: 'move',
+      snapshots: [],
+      setBall: (point) =>
+        set(() => ({
+          ball: {
+            x: clamp(point.x, boardConfig.fieldX + boardConfig.ballRadius, boardConfig.fieldX + boardConfig.fieldWidth - boardConfig.ballRadius),
+            y: clamp(point.y, boardConfig.fieldY + boardConfig.ballRadius, boardConfig.fieldY + boardConfig.fieldHeight - boardConfig.ballRadius),
+          },
+        })),
+      moveRod: (rodId, y) =>
+        set((state) => ({
+          rods: {
+            ...state.rods,
+            [rodId]: {
+              ...state.rods[rodId],
+              y: clamp(y, boardConfig.rodMinY, boardConfig.rodMaxY),
+            },
+          },
+        })),
+      cycleRodTilt: (rodId) =>
+        set((state) => ({
+          rods: {
+            ...state.rods,
+            [rodId]: {
+              ...state.rods[rodId],
+              tilt: cycleTiltValue(state.rods[rodId].tilt),
+            },
+          },
+        })),
+      addShot: (shot) =>
+        set((state) => ({
+          shots: [
+            ...state.shots,
+            {
+              ...shot,
+              id: createId(shot.kind),
+              label: buildLabel(shot.kind, state.shots.length),
+            },
+          ],
+        })),
+      removeShot: (shotId) =>
+        set((state) => ({
+          shots: state.shots.filter((shot) => shot.id !== shotId),
+        })),
+      setActiveTool: (tool) => set(() => ({ activeTool: tool })),
+      setActiveShotColor: (color) => set(() => ({ activeShotColor: color })),
+      toggleGuides: () => set((state) => ({ guidesVisible: !state.guidesVisible })),
+      toggleFiveGoalPositions: () => set((state) => ({ fiveGoalPositions: !state.fiveGoalPositions })),
+      saveSnapshot: (name) => {
+        const safeName = name.trim() || `Taktik ${get().snapshots.length + 1}`;
+        const scene = getSerializableScene(get());
+        const snapshot = createSnapshot(scene, safeName);
+        set((state) => ({
+          snapshots: [snapshot, ...state.snapshots].slice(0, 12),
+        }));
+      },
+      loadSnapshot: (snapshotId) => {
+        const snapshot = get().snapshots.find((item) => item.id === snapshotId);
+        if (!snapshot) {
+          return;
+        }
+
+        set(() => ({
+          ...snapshot.scene,
+        }));
+      },
+      deleteSnapshot: (snapshotId) =>
+        set((state) => ({
+          snapshots: state.snapshots.filter((snapshot) => snapshot.id !== snapshotId),
+        })),
+      resetScene: () => set(() => ({ ...createSceneFromDefaults() })),
+      hydrateScene: (scene) =>
+        set((state) => ({
+          ...state,
+          ...scene,
+        })),
+    }),
+    {
+      name: 'foosboard-scene',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        ball: state.ball,
+        rods: state.rods,
+        shots: state.shots,
+        guidesVisible: state.guidesVisible,
+        fiveGoalPositions: state.fiveGoalPositions,
+        activeShotColor: state.activeShotColor,
+        snapshots: state.snapshots,
+      }),
+      version: 1,
+    },
+  ),
+);
+
+export function getSerializableScene(state: BoardStore): SerializableScene {
+  return {
+    ball: state.ball,
+    rods: state.rods,
+    shots: state.shots,
+    guidesVisible: state.guidesVisible,
+    fiveGoalPositions: state.fiveGoalPositions,
+    activeShotColor: state.activeShotColor,
+  };
+}
