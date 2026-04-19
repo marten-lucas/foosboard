@@ -1,0 +1,124 @@
+{
+    "meta": {
+        "name": "Ullrich Legacy Table",
+        "sourceAsset": "foosball_table.svg",
+        "legacyViewBox": [
+            610,
+            470
+        ],
+        "description": "Geometry extracted from the original legacy table. Dimensions and proportions stay aligned with the SVG template."
+    },
+    "dimensions": {
+        "width": 610,
+        "height": 470,
+        "fieldX": 22.213,
+        "fieldY": 73.35,
+        "fieldWidth": 560.31,
+        "fieldHeight": 320,
+        "frameX": 16.913,
+        "frameY": 68.35,
+        "frameWidth": 570.359,
+        "frameHeight": 330,
+        "goalWidth": 90,
+        "goalDepth": 5.213,
+        "centerCircleRadius": 45,
+        "centerX": 302.368,
+        "centerY": 233.35,
+        "ballRadius": 8.6,
+        "rodMinY": 100,
+        "rodMaxY": 366,
+        "figureRadius": 12,
+        "figureSpacing": 25
+    },
+    "palette": {
+        "pageBg": "#e9e9e9",
+        "boardOuter": "#2da62d",
+        "boardInner": "#37c837",
+        "fieldLine": "#ffffff",
+        "guide": "rgba(0,0,0,0.22)",
+        "shadow": "rgba(25, 40, 35, 0.18)",
+        "rail": "#b7b7b7"
+    },
+    "rods": [
+        {
+            "id": "P2_1",
+            "label": "Abwehr außen",
+            "team": "orange",
+            "x": 52.0,
+            "playerCount": 3,
+            "defaultY": 148,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#df6f3d"
+        },
+        {
+            "id": "P2_2",
+            "label": "Abwehr innen",
+            "team": "orange",
+            "x": 122.0,
+            "playerCount": 2,
+            "defaultY": 173,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#df6f3d"
+        },
+        {
+            "id": "P1_3",
+            "label": "Angriff",
+            "team": "blue",
+            "x": 192.851,
+            "playerCount": 3,
+            "defaultY": 198,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#4a97d9"
+        },
+        {
+            "id": "P2_5",
+            "label": "Mittelfeld außen",
+            "team": "orange",
+            "x": 262.125,
+            "playerCount": 5,
+            "defaultY": 223,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#df6f3d"
+        },
+        {
+            "id": "P1_5",
+            "label": "Mittelfeld außen",
+            "team": "blue",
+            "x": 337.0,
+            "playerCount": 5,
+            "defaultY": 248,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#4a97d9"
+        },
+        {
+            "id": "P2_3",
+            "label": "Angriff",
+            "team": "orange",
+            "x": 407.0,
+            "playerCount": 3,
+            "defaultY": 273,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#df6f3d"
+        },
+        {
+            "id": "P1_2",
+            "label": "Abwehr innen",
+            "team": "blue",
+            "x": 477.0,
+            "playerCount": 2,
+            "defaultY": 298,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#4a97d9"
+        },
+        {
+            "id": "P1_1",
+            "label": "Abwehr außen",
+            "team": "blue",
+            "x": 547.0,
+            "playerCount": 3,
+            "defaultY": 323,
+            "rodColor": "#c9c2b8",
+            "figureColor": "#4a97d9"
+        }
+    ]
+}
