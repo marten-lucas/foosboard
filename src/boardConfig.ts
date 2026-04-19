@@ -20,6 +20,7 @@ export interface RodConfig {
   x: number;
   playerCount: number;
   defaultY: number;
+  figureOffsets?: number[];
   rodColor: string;
   figureColor: string;
 }

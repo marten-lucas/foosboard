@@ -75,4 +75,18 @@ describe('board store', () => {
     expect(scene).not.toHaveProperty('snapshots');
     expect(scene).not.toHaveProperty('activeTool');
   });
+
+  it('matches the legacy rod distribution from the original SVG', () => {
+    expect(boardConfig.rods.map((rod) => rod.playerCount)).toEqual([1, 2, 3, 5, 5, 3, 2, 1]);
+    expect(boardConfig.rods.map((rod) => rod.figureOffsets ?? [])).toEqual([
+      [0],
+      [-55, 55],
+      [-85, 0, 85],
+      [-120, -60, 0, 60, 120],
+      [-120, -60, 0, 60, 120],
+      [-85, 0, 85],
+      [-55, 55],
+      [0],
+    ]);
+  });
 });

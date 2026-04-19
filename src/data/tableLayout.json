@@ -25,8 +25,8 @@
         "centerX": 302.368,
         "centerY": 233.35,
         "ballRadius": 8.6,
-        "rodMinY": 100,
-        "rodMaxY": 366,
+        "rodMinY": 204.46,
+        "rodMaxY": 262.24,
         "figureRadius": 12,
         "figureSpacing": 25
     },
@@ -42,21 +42,28 @@
     "rods": [
         {
             "id": "P2_1",
-            "label": "Abwehr außen",
+            "label": "Torwart",
             "team": "orange",
             "x": 52.0,
-            "playerCount": 3,
-            "defaultY": 148,
+            "playerCount": 1,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                0
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#df6f3d"
         },
         {
             "id": "P2_2",
-            "label": "Abwehr innen",
+            "label": "Abwehr",
             "team": "orange",
             "x": 122.0,
             "playerCount": 2,
-            "defaultY": 173,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                -55,
+                55
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#df6f3d"
         },
@@ -66,27 +73,46 @@
             "team": "blue",
             "x": 192.851,
             "playerCount": 3,
-            "defaultY": 198,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                -85,
+                0,
+                85
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#4a97d9"
         },
         {
             "id": "P2_5",
-            "label": "Mittelfeld außen",
+            "label": "Mittelfeld",
             "team": "orange",
             "x": 262.125,
             "playerCount": 5,
-            "defaultY": 223,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                -120,
+                -60,
+                0,
+                60,
+                120
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#df6f3d"
         },
         {
             "id": "P1_5",
-            "label": "Mittelfeld außen",
+            "label": "Mittelfeld",
             "team": "blue",
             "x": 337.0,
             "playerCount": 5,
-            "defaultY": 248,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                -120,
+                -60,
+                0,
+                60,
+                120
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#4a97d9"
         },
@@ -96,27 +122,39 @@
             "team": "orange",
             "x": 407.0,
             "playerCount": 3,
-            "defaultY": 273,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                -85,
+                0,
+                85
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#df6f3d"
         },
         {
             "id": "P1_2",
-            "label": "Abwehr innen",
+            "label": "Abwehr",
             "team": "blue",
             "x": 477.0,
             "playerCount": 2,
-            "defaultY": 298,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                -55,
+                55
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#4a97d9"
         },
         {
             "id": "P1_1",
-            "label": "Abwehr außen",
+            "label": "Torwart",
             "team": "blue",
             "x": 547.0,
-            "playerCount": 3,
-            "defaultY": 323,
+            "playerCount": 1,
+            "defaultY": 233.35,
+            "figureOffsets": [
+                0
+            ],
             "rodColor": "#c9c2b8",
             "figureColor": "#4a97d9"
         }

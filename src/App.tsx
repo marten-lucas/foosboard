@@ -16,7 +16,7 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { Ban, Copy, Eye, Layers3, Play, RotateCcw, Save, Shield, Sparkles, Trash2 } from 'lucide-react';
-import { boardConfig, type RodConfig, type SerializableScene } from './boardConfig';
+import { boardConfig, type RodConfig, type RodState, type SerializableScene } from './boardConfig';
 import { clamp, decodeScene, encodeScene, projectGoalShadows, traceShot, type FigureHit, type Point } from './geometry';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
@@ -42,6 +42,40 @@ const colorChoices = [
   { value: '#f4bf4f', label: 'Gelb' },
 ];
 
+const legacyGuideYs = [188.29, 206.29, 224.29, 242.29, 260.29, 278.29];
+
+function getRodOffsets(rod: RodConfig): number[] {
+  if (rod.figureOffsets && rod.figureOffsets.length > 0) {
+    return rod.figureOffsets;
+  }
+
+  const centerYOffset = (rod.playerCount - 1) * boardConfig.figureSpacing * 0.5;
+  return Array.from({ length: rod.playerCount }, (_, index) => index * boardConfig.figureSpacing - centerYOffset);
+}
+
+function renderLegacyFigure(
+  rod: RodConfig,
+  tilt: RodState['tilt'],
+  offset: number,
+  onToggle: (event: React.MouseEvent<SVGGElement>) => void,
+) {
+  const shiftX = tilt === 'front' ? 7.5 : tilt === 'back' ? -7.5 : 0;
+  const bodyX = tilt === 'back' ? -15 : 0;
+
+  return (
+    <g transform={`translate(${shiftX}, ${offset})`} onClick={onToggle} style={{ cursor: 'pointer' }}>
+      <rect x={-7.5} y={-15} width={15} height={5} fill="#111" />
+      <rect x={-7.5} y={10} width={15} height={5} fill="#111" />
+      <rect x={bodyX} y={-10} width={15} height={20} fill={rod.figureColor} stroke={tilt === 'neutral' ? 'rgba(15, 29, 25, 0.58)' : 'none'} strokeWidth={0.6} />
+      {tilt === 'neutral' ? (
+        <circle cx={0} cy={0} r={5} fill="none" stroke="#111" strokeWidth={0.5} />
+      ) : (
+        <rect x={tilt === 'back' ? 0 : -15} y={-5} width={15} height={10} fill={rod.figureColor} opacity={0.92} />
+      )}
+    </g>
+  );
+}
+
 function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null): Point {
   if (!svg) {
     return { x: 0, y: 0 };
@@ -57,22 +91,19 @@ function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, 
 function buildFigureHits(rods: SerializableScene['rods']): FigureHit[] {
   return boardConfig.rods.flatMap((rod) => {
     const state = rods[rod.id];
-    const centerYOffset = (rod.playerCount - 1) * boardConfig.figureSpacing * 0.5;
-    const tiltShift = state.tilt === 'front' ? 9 : state.tilt === 'back' ? -9 : 0;
-    const scale = state.tilt === 'neutral' ? 1 : 0.9;
+    const offsets = getRodOffsets(rod);
+    const tiltShift = state.tilt === 'front' ? 7.5 : state.tilt === 'back' ? -7.5 : 0;
+    const radius = state.tilt === 'neutral' ? boardConfig.figureRadius : boardConfig.figureRadius * 0.92;
 
-    return Array.from({ length: rod.playerCount }, (_, index) => {
-      const centerY = state.y + index * boardConfig.figureSpacing - centerYOffset;
-      return {
-        id: `${rod.id}-${index}`,
-        rodId: rod.id,
-        center: {
-          x: rod.x + tiltShift,
-          y: centerY,
-        },
-        radius: boardConfig.figureRadius * scale,
-      } satisfies FigureHit;
-    });
+    return offsets.map((offset, index) => ({
+      id: `${rod.id}-${index}`,
+      rodId: rod.id,
+      center: {
+        x: rod.x + tiltShift,
+        y: state.y + offset,
+      },
+      radius,
+    })) satisfies FigureHit[];
   });
 }
 
@@ -290,7 +321,16 @@ function App() {
     setSnapshotName('');
   };
 
-  const goalMarkers = fiveGoalPositions ? [0.1, 0.3, 0.5, 0.7, 0.9] : [0.2, 0.5, 0.8];
+  const goalTop = boardConfig.centerY - boardConfig.goalWidth / 2;
+  const goalMarkerSegments = fiveGoalPositions
+    ? Array.from({ length: 5 }, (_, index) => ({ y: goalTop + index * 18, height: 18 }))
+    : Array.from({ length: 3 }, (_, index) => ({ y: goalTop + index * 30, height: 30 }));
+  const leftGoalColors = fiveGoalPositions
+    ? ['rgba(255, 219, 194, 0.55)', 'rgba(255, 190, 145, 0.5)', 'rgba(255, 160, 104, 0.5)', 'rgba(232, 118, 63, 0.5)', 'rgba(191, 84, 34, 0.55)']
+    : ['rgba(255, 219, 194, 0.55)', 'rgba(255, 160, 104, 0.5)', 'rgba(191, 84, 34, 0.55)'];
+  const rightGoalColors = fiveGoalPositions
+    ? ['rgba(199, 224, 255, 0.55)', 'rgba(163, 202, 247, 0.5)', 'rgba(118, 177, 238, 0.5)', 'rgba(73, 151, 217, 0.5)', 'rgba(37, 104, 162, 0.55)']
+    : ['rgba(199, 224, 255, 0.55)', 'rgba(118, 177, 238, 0.5)', 'rgba(37, 104, 162, 0.55)'];
 
   return (
     <AppShell header={{ height: 88 }} padding="md" className="foosboard-shell">
@@ -364,53 +404,28 @@ function App() {
                     </marker>
                   </defs>
 
-                  <rect width={boardConfig.width} height={boardConfig.height} rx={12} fill={boardConfig.colors.pageBg} />
-                  <rect
-                    x={boardConfig.fieldX}
-                    y={boardConfig.fieldY}
-                    width={boardConfig.fieldWidth}
-                    height={boardConfig.fieldHeight}
-                    rx={0}
-                    fill={boardConfig.colors.boardInner}
-                  />
-                  <rect
-                    x={boardConfig.frameX}
-                    y={boardConfig.frameY}
-                    width={boardConfig.frameWidth}
-                    height={boardConfig.frameHeight}
-                    rx={0}
-                    fill="none"
-                    stroke="#111"
-                    strokeWidth={5}
-                  />
+                  <rect width={boardConfig.width} height={boardConfig.height} fill={boardConfig.colors.pageBg} />
+                  <rect x={boardConfig.fieldX} y={boardConfig.fieldY} width={boardConfig.fieldWidth} height={boardConfig.fieldHeight} fill={boardConfig.colors.boardInner} />
+                  <rect x={boardConfig.frameX} y={boardConfig.frameY} width={boardConfig.frameWidth} height={boardConfig.frameHeight} fill="none" stroke="#111" strokeWidth={5} />
 
-                  {guidesVisible && (
-                    <g opacity={0.88}>
-                      <line
-                        x1={boardConfig.fieldX}
-                        y1={boardConfig.centerY}
-                        x2={boardConfig.fieldX + boardConfig.fieldWidth}
-                        y2={boardConfig.centerY}
-                        stroke={boardConfig.colors.fieldLine}
-                        strokeDasharray="10 10"
-                        strokeWidth={2.5}
-                      />
-                      <circle cx={boardConfig.centerX} cy={boardConfig.centerY} r={boardConfig.centerCircleRadius} fill="none" stroke={boardConfig.colors.fieldLine} strokeWidth={2.5} opacity={0.8} />
-                      <circle cx={boardConfig.centerX} cy={boardConfig.centerY} r={4} fill={boardConfig.colors.fieldLine} opacity={0.8} />
-                    </g>
-                  )}
-
-                  <g opacity={0.8}>
-                    <path d={`M ${boardConfig.fieldX} ${boardConfig.fieldY + 113} H ${boardConfig.fieldX + boardConfig.fieldWidth}`} stroke={boardConfig.colors.guide} strokeWidth={1} />
-                    <path d={`M ${boardConfig.fieldX} ${boardConfig.fieldY + boardConfig.fieldHeight - 113} H ${boardConfig.fieldX + boardConfig.fieldWidth}`} stroke={boardConfig.colors.guide} strokeWidth={1} />
+                  <g fill="none" stroke={boardConfig.colors.fieldLine} strokeWidth={2}>
+                    <path d={`M ${boardConfig.fieldX} ${boardConfig.fieldY + 65} H ${boardConfig.fieldX + 130} V ${boardConfig.fieldY + 255} H ${boardConfig.fieldX}`} />
+                    <path d={`M ${boardConfig.fieldX} ${boardConfig.fieldY + 90} H ${boardConfig.fieldX + 70} V ${boardConfig.fieldY + 230} H ${boardConfig.fieldX}`} />
+                    <line x1={boardConfig.centerX} y1={boardConfig.fieldY} x2={boardConfig.centerX} y2={boardConfig.fieldY + boardConfig.fieldHeight} />
+                    <path d={`M ${boardConfig.fieldX + boardConfig.fieldWidth} ${boardConfig.fieldY + 65} H ${boardConfig.fieldX + boardConfig.fieldWidth - 130} V ${boardConfig.fieldY + 255} H ${boardConfig.fieldX + boardConfig.fieldWidth}`} />
+                    <path d={`M ${boardConfig.fieldX + boardConfig.fieldWidth} ${boardConfig.fieldY + 230} H ${boardConfig.fieldX + boardConfig.fieldWidth - 70} V ${boardConfig.fieldY + 90} H ${boardConfig.fieldX + boardConfig.fieldWidth}`} />
+                    <path d={`M ${boardConfig.fieldX + 130} ${boardConfig.fieldY + 125} C ${boardConfig.fieldX + 160} ${boardConfig.fieldY + 135} ${boardConfig.fieldX + 160} ${boardConfig.fieldY + 185} ${boardConfig.fieldX + 130} ${boardConfig.fieldY + 195}`} />
+                    <path d={`M ${boardConfig.fieldX + boardConfig.fieldWidth - 130} ${boardConfig.fieldY + 195} C ${boardConfig.fieldX + boardConfig.fieldWidth - 160} ${boardConfig.fieldY + 185} ${boardConfig.fieldX + boardConfig.fieldWidth - 160} ${boardConfig.fieldY + 135} ${boardConfig.fieldX + boardConfig.fieldWidth - 130} ${boardConfig.fieldY + 125}`} />
+                    <circle cx={boardConfig.centerX} cy={boardConfig.centerY} r={boardConfig.centerCircleRadius} />
+                    <circle cx={boardConfig.centerX} cy={boardConfig.centerY} r={3} fill={boardConfig.colors.fieldLine} />
                   </g>
 
                   <g>
-                    <rect x={boardConfig.fieldX - boardConfig.goalDepth} y={boardConfig.centerY - boardConfig.goalWidth / 2} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.shadow} opacity={0.55} />
-                    <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={boardConfig.centerY - boardConfig.goalWidth / 2} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.shadow} opacity={0.55} />
+                    <rect x={boardConfig.fieldX - boardConfig.goalDepth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
+                    <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
                   </g>
 
-                  <g opacity={0.45}>
+                  <g opacity={0.5}>
                     {leftGoalShadows.map((shadow, index) => (
                       <rect
                         key={`left-shadow-${shadow.rodId}-${index}`}
@@ -418,7 +433,6 @@ function App() {
                         y={shadow.start}
                         width={Math.max(2, boardConfig.goalDepth - 1.6)}
                         height={Math.max(4, shadow.end - shadow.start)}
-                        rx={4}
                         fill="#df6f3d"
                       />
                     ))}
@@ -429,25 +443,33 @@ function App() {
                         y={shadow.start}
                         width={Math.max(2, boardConfig.goalDepth - 1.6)}
                         height={Math.max(4, shadow.end - shadow.start)}
-                        rx={4}
                         fill="#4a97d9"
                       />
                     ))}
                   </g>
 
-                  <g opacity={0.65}>
-                    {goalMarkers.map((ratio) => (
-                      <g key={ratio}>
-                        <circle cx={boardConfig.fieldX - boardConfig.goalDepth / 2} cy={boardConfig.centerY - boardConfig.goalWidth / 2 + boardConfig.goalWidth * ratio} r={3.25} fill={boardConfig.colors.fieldLine} />
-                        <circle cx={boardConfig.fieldX + boardConfig.fieldWidth + boardConfig.goalDepth / 2} cy={boardConfig.centerY - boardConfig.goalWidth / 2 + boardConfig.goalWidth * ratio} r={3.25} fill={boardConfig.colors.fieldLine} />
+                  <g opacity={0.72}>
+                    {goalMarkerSegments.map((segment, index) => (
+                      <g key={`${segment.y}-${segment.height}`}>
+                        <rect x={boardConfig.fieldX - 16.7} y={segment.y} width={16.5} height={segment.height} fill={leftGoalColors[index]} stroke="rgba(0,0,0,0.65)" strokeWidth={0.55} />
+                        <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={segment.y} width={16.9} height={segment.height} fill={rightGoalColors[index]} stroke="rgba(0,0,0,0.65)" strokeWidth={0.55} />
                       </g>
                     ))}
                   </g>
 
                   {guidesVisible && (
-                    <g opacity={0.8}>
-                      {boardConfig.rods.map((rod) => (
-                        <line key={rod.id} x1={rod.x} y1={boardConfig.fieldY + 12} x2={rod.x} y2={boardConfig.fieldY + boardConfig.fieldHeight - 12} stroke={boardConfig.colors.rail} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="6 8" />
+                    <g opacity={0.45}>
+                      {legacyGuideYs.map((guideY) => (
+                        <line
+                          key={guideY}
+                          x1={boardConfig.fieldX}
+                          y1={guideY}
+                          x2={boardConfig.fieldX + boardConfig.fieldWidth}
+                          y2={guideY}
+                          stroke={boardConfig.colors.guide}
+                          strokeWidth={1}
+                          strokeDasharray="2 4"
+                        />
                       ))}
                     </g>
                   )}
@@ -490,52 +512,34 @@ function App() {
 
                   {boardConfig.rods.map((rod) => {
                     const rodState = rods[rod.id];
-                    const count = rod.playerCount;
-                    const offsets = Array.from({ length: count }, (_, index) => index * boardConfig.figureSpacing - ((count - 1) * boardConfig.figureSpacing) / 2);
-                    const tiltShift = rodState.tilt === 'front' ? 11 : rodState.tilt === 'back' ? -11 : 0;
-                    const tiltStretch = rodState.tilt === 'neutral' ? 1 : 0.88;
+                    const offsets = getRodOffsets(rod);
 
                     return (
                       <g key={rod.id} data-testid={`rod-${rod.id}`} transform={`translate(${rod.x},0)`}>
-                        <line x1={0} y1={boardConfig.fieldY + 12} x2={0} y2={boardConfig.fieldY + boardConfig.fieldHeight - 12} stroke={boardConfig.colors.rail} strokeWidth={5} strokeLinecap="round" />
+                        <rect x={-2.5} y={38.35} width={5} height={390} fill={rod.rodColor} stroke="rgba(0,0,0,0.58)" strokeWidth={0.95} />
+                        <rect x={-7.5} y={14.39} width={15} height={40} fill="#111" rx={1.5} />
+                        <rect x={-7.5} y={412.24} width={15} height={40} fill="#111" rx={1.5} />
+
+                        <rect
+                          x={-34.95}
+                          y={rodState.y - 28.89}
+                          width={69.9}
+                          height={57.78}
+                          fill="rgba(255,255,255,0.04)"
+                          stroke="rgba(255,255,255,0.35)"
+                          strokeWidth={1}
+                          strokeDasharray="2 3"
+                          onPointerDown={(event) => startRodDrag(rod.id, event)}
+                          cursor="ns-resize"
+                        />
 
                         <g transform={`translate(0 ${rodState.y})`}>
-                          <rect
-                            x={-30}
-                            y={-22}
-                            width={60}
-                            height={44}
-                            rx={18}
-                            fill="rgba(255,255,255,0.08)"
-                            stroke="rgba(255,255,255,0.45)"
-                            strokeWidth={1.2}
-                            onPointerDown={(event) => startRodDrag(rod.id, event)}
-                            cursor="ns-resize"
-                          />
-
-                          <rect x={-26} y={-6} width={52} height={12} rx={6} fill={rod.rodColor} opacity={0.65} />
-
                           {offsets.map((offset, index) => (
-                            <g
-                              key={`${rod.id}-${index}`}
-                              transform={`translate(${tiltShift}, ${offset}) scale(1 ${tiltStretch})`}
-                              onClick={(event) => {
+                            <g key={`${rod.id}-${index}`}>
+                              {renderLegacyFigure(rod, rodState.tilt, offset, (event) => {
                                 event.stopPropagation();
                                 cycleRodTilt(rod.id);
-                              }}
-                              style={{ cursor: 'pointer' }}
-                            >
-                              <ellipse
-                                cx={0}
-                                cy={0}
-                                rx={boardConfig.figureRadius * 1.02}
-                                ry={boardConfig.figureRadius * 0.84}
-                                fill={rod.figureColor}
-                                stroke="rgba(15, 29, 25, 0.18)"
-                                strokeWidth={2}
-                                opacity={0.96}
-                              />
-                              <ellipse cx={0} cy={-4} rx={boardConfig.figureRadius * 0.48} ry={boardConfig.figureRadius * 0.24} fill="rgba(255,255,255,0.3)" />
+                              })}
                             </g>
                           ))}
                         </g>
