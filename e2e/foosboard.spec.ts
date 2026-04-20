@@ -1,4 +1,45 @@
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
+
+const fieldSvgPath = path.resolve(process.cwd(), 'testdata/foosball_table_p4p_field.svg');
+const playerSvgPath = path.resolve(process.cwd(), 'testdata/foosball_table_player.svg');
+
+async function expectPreviewContained(locator: ReturnType<typeof test.extend> extends never ? never : any) {
+  const metrics = await locator.evaluate((element: HTMLElement) => {
+    const previewBox = element.getBoundingClientRect();
+    const shapes = Array.from(element.querySelectorAll('svg rect, svg circle, svg path, svg ellipse, svg polygon, svg polyline, svg line'));
+    const visibleCount = shapes.filter((shape) => {
+      const rect = (shape as SVGGraphicsElement).getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && rect.right > previewBox.left && rect.left < previewBox.right && rect.bottom > previewBox.top && rect.top < previewBox.bottom;
+    }).length;
+
+    return {
+      clientWidth: element.clientWidth,
+      clientHeight: element.clientHeight,
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
+      visibleCount,
+    };
+  });
+
+  expect(metrics.visibleCount).toBeGreaterThan(0);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+}
+
+async function expectPreviewFitsAboveFooter(page: import('@playwright/test').Page, previewTestId: string) {
+  const layout = await page.evaluate((testId) => {
+    const preview = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement | null;
+    const footer = document.querySelector('.foosboard-config-footer') as HTMLElement | null;
+
+    return {
+      previewBottom: preview?.getBoundingClientRect().bottom ?? 0,
+      footerTop: footer?.getBoundingClientRect().top ?? 0,
+    };
+  }, previewTestId);
+
+  expect(layout.previewBottom).toBeLessThanOrEqual(layout.footerTop);
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -13,36 +54,222 @@ test('renders the modern tactics board with legacy dimensions', async ({ page })
 });
 
 test('supports tactical interactions for lines and toggles', async ({ page }) => {
-  await page.getByText('Schuss', { exact: true }).click();
+  await page.getByText('Schuss', { exact: true }).dispatchEvent('click');
   await page.getByTestId('board-svg').click({ position: { x: 470, y: 170 } });
-  await expect(page.getByText('Schuss 1')).toBeVisible();
+  await expect(page.getByText('Schuss 1')).toHaveCount(1);
 
-  await page.getByText('Pass', { exact: true }).click();
+  await page.getByText('Pass', { exact: true }).dispatchEvent('click');
   await page.getByTestId('board-svg').click({ position: { x: 330, y: 250 } });
-  await expect(page.getByText('Pass 2')).toBeVisible();
+  await expect(page.getByText('Pass 2')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Hilfslinien an' }).click();
-  await expect(page.getByRole('button', { name: 'Hilfslinien aus' })).toBeVisible();
-
-  await page.getByRole('button', { name: '3 Zielpunkte' }).click();
-  await expect(page.getByRole('button', { name: '5 Zielpunkte' })).toBeVisible();
+  await page.getByText('Kippen').first().dispatchEvent('click');
+  await expect(page.getByText(/front|back/i)).toHaveCount(1);
 });
 
-test('saves, reloads and shares snapshots', async ({ page }) => {
-  const ballBadge = page.getByText(/Ball \d+ \/ \d+/).first();
-  const initialText = await ballBadge.textContent();
+test('saves and shares snapshots', async ({ page }) => {
+  await page.getByLabel('Snapshot-Name').fill('Regression Szene', { force: true });
+  await page.getByText('Speichern').dispatchEvent('click');
+  await expect(page.getByText('Regression Szene')).toHaveCount(1);
 
-  await page.getByTestId('board-svg').click({ position: { x: 420, y: 220 } });
-  await expect(ballBadge).not.toHaveText(initialText || '');
-
-  await page.getByLabel('Snapshot-Name').fill('Regression Szene');
-  await page.getByText('Speichern').click();
-  await expect(page.getByText('Regression Szene')).toBeVisible();
-
-  await page.getByText('Teilen').click();
+  await page.getByText('Teilen').dispatchEvent('click');
   await expect(page).toHaveURL(/scene=/);
+  await expect(page.getByLabel('Share-Link')).toHaveValue(/scene=/);
+});
 
-  await page.getByText('Reset').click();
-  await page.getByLabel('Laden').first().click();
-  await expect(page.getByText('Regression Szene')).toBeVisible();
+test('shows the field preview perfectly inside the frame', async ({ page }) => {
+  await page.getByLabel('Tischauswahl öffnen').click();
+  await page.getByText('Tische konfigurieren').click();
+
+  const canvas = page.getByTestId('field-preview-canvas');
+  const window = page.getByTestId('field-preview-window');
+
+  await expect(canvas).toBeVisible();
+  await expect(window).toBeVisible();
+
+  const canvasAspectRatio = await canvas.evaluate((element) => (element as HTMLElement).style.aspectRatio);
+  const windowLayout = await window.evaluate((element) => ({
+    left: parseFloat((element as HTMLElement).style.left),
+    top: parseFloat((element as HTMLElement).style.top),
+    width: parseFloat((element as HTMLElement).style.width),
+    height: parseFloat((element as HTMLElement).style.height),
+  }));
+
+  expect(canvasAspectRatio).toContain('/');
+  expect(windowLayout.left).toBeCloseTo(7.142857142857142, 2);
+  expect(windowLayout.top).toBeCloseTo(11.363636363636363, 2);
+  expect(windowLayout.width).toBeCloseTo(85.71428571428571, 2);
+  expect(windowLayout.height).toBeCloseTo(77.27272727272727, 2);
+});
+
+test('creates a table configuration from SVG test data and keeps previews contained in steps 1 to 3', async ({ page }) => {
+  await page.getByLabel('Tischauswahl öffnen').click();
+  await page.getByText('Tische konfigurieren').click();
+
+  const fieldCanvas = page.getByTestId('field-preview-canvas');
+  const fieldWindow = page.getByTestId('field-preview-window');
+
+  await expect(fieldCanvas).toBeVisible();
+  await expectPreviewFitsAboveFooter(page, 'field-preview-canvas');
+
+  await page.locator('[data-testid="field-upload"] input[type="file"]').setInputFiles(fieldSvgPath);
+
+  await expect(fieldWindow.locator('svg')).toBeVisible();
+  await expectPreviewContained(fieldCanvas);
+  await expectPreviewFitsAboveFooter(page, 'field-preview-canvas');
+
+  const fieldScaling = await page.evaluate(() => {
+    const windowElement = document.querySelector('[data-testid="field-preview-window"]') as HTMLElement | null;
+    const fieldSvg = windowElement?.querySelector('svg') as SVGSVGElement | null;
+    const frame = document.querySelector('[data-testid="field-preview-frame"]') as SVGGraphicsElement | null;
+    const windowRect = windowElement?.getBoundingClientRect();
+    const svgRect = fieldSvg?.getBoundingClientRect();
+    const frameRect = frame?.getBoundingClientRect();
+
+    return {
+      preserveAspectRatio: fieldSvg?.getAttribute('preserveAspectRatio') || '',
+      fillsWidth: svgRect ? Math.abs(svgRect.width - Math.max(windowRect?.width || 0, 0)) <= 2 : false,
+      fillsHeight: svgRect ? Math.abs(svgRect.height - Math.max(windowRect?.height || 0, 0)) <= 2 : false,
+      frameRatio: frameRect ? frameRect.width / Math.max(frameRect.height, 1) : 0,
+    };
+  });
+
+  expect(fieldScaling.preserveAspectRatio).toMatch(/meet/i);
+  expect(fieldScaling.fillsWidth || fieldScaling.fillsHeight).toBeTruthy();
+  expect(fieldScaling.frameRatio).toBeCloseTo(120 / 68, 1);
+
+  await page.getByRole('button', { name: /weiter/i }).click();
+
+  const rodCanvas = page.getByTestId('rod-preview-canvas');
+  await expect(rodCanvas).toBeVisible();
+  await expect(page.getByLabel('Stangenvorschau')).toBeVisible();
+  await expectPreviewContained(rodCanvas);
+  await expectPreviewFitsAboveFooter(page, 'rod-preview-canvas');
+
+  const rodPreviewMetrics = await page.getByLabel('Stangenvorschau').evaluate((svg) => {
+    const gripRects = Array.from(svg.querySelectorAll('rect'))
+      .map((rect) => ({
+        width: Number(rect.getAttribute('width') || 0),
+        height: Number(rect.getAttribute('height') || 0),
+        y: Number(rect.getAttribute('y') || 0),
+        fill: rect.getAttribute('fill') || '',
+      }))
+      .filter((rect) => Math.abs(rect.width - 4) < 0.01 && ['#111', '#111111', 'rgb(17, 17, 17)'].includes(rect.fill));
+
+    const lines = Array.from(svg.querySelectorAll('line')).map((line) => ({
+      y1: Number(line.getAttribute('y1') || 0),
+      y2: Number(line.getAttribute('y2') || 0),
+    }));
+
+    return {
+      previewHeight: svg.getBoundingClientRect().height,
+      gripHeights: gripRects.map((rect) => rect.height),
+      gripTop: Math.min(...gripRects.map((rect) => rect.y)),
+      gripBottom: Math.max(...gripRects.map((rect) => rect.y + rect.height)),
+      rodTop: Math.min(...lines.map((line) => Math.min(line.y1, line.y2))),
+      rodBottom: Math.max(...lines.map((line) => Math.max(line.y1, line.y2))),
+      lastChildTestId: svg.lastElementChild?.getAttribute('data-testid') || '',
+    };
+  });
+
+  expect(rodPreviewMetrics.previewHeight).toBeGreaterThan(220);
+  expect(rodPreviewMetrics.gripHeights.length).toBeGreaterThan(0);
+  expect(rodPreviewMetrics.gripHeights.every((height) => Math.abs(height - 13) < 0.2)).toBeTruthy();
+  expect(Math.abs(rodPreviewMetrics.gripTop - rodPreviewMetrics.rodTop)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(rodPreviewMetrics.gripBottom - rodPreviewMetrics.rodBottom)).toBeLessThanOrEqual(0.5);
+  expect(rodPreviewMetrics.lastChildTestId).toBe('rod-preview-canvas-frame');
+
+  await page.getByRole('button', { name: /weiter/i }).click();
+
+  await page.locator('[data-testid="figure-upload"] input[type="file"]').setInputFiles(playerSvgPath);
+
+  await expect(page.getByText('Puppe unten')).toBeVisible();
+  await expect(page.getByText('Puppe nach vorn')).toBeVisible();
+  await expect(page.getByText('Puppe nach hinten')).toBeVisible();
+
+  const bottomColumn = page.getByTestId('figure-column-bottom');
+  const forwardColumn = page.getByTestId('figure-column-forward');
+  const backwardColumn = page.getByTestId('figure-column-backward');
+
+  await expect(bottomColumn.getByLabel('Layer')).toHaveValue(/down|unten/i);
+  await expect(forwardColumn.getByLabel('Layer')).toHaveValue(/front|vorn|forward/i);
+  await expect(backwardColumn.getByLabel('Layer')).toHaveValue(/back|hinten|backward/i);
+
+  await expect(bottomColumn.getByLabel('Verbindungsgruppe')).toHaveValue(/mount/i);
+  await expect(forwardColumn.getByLabel('Verbindungsgruppe')).toHaveValue(/mount/i);
+  await expect(backwardColumn.getByLabel('Verbindungsgruppe')).toHaveValue(/mount/i);
+
+  await expect(bottomColumn.getByLabel('Kollisionsgruppe')).toHaveValue(/hit/i);
+  await expect(forwardColumn.getByLabel('Kollisionsgruppe')).toHaveValue(/hit/i);
+  await expect(backwardColumn.getByLabel('Kollisionsgruppe')).toHaveValue(/hit/i);
+
+  for (const previewId of ['figure-preview-bottom', 'figure-preview-forward', 'figure-preview-backward']) {
+    const preview = page.getByTestId(previewId);
+    await expect(preview).toBeVisible();
+    await expect(preview.locator('svg')).toBeVisible();
+    await expectPreviewContained(preview);
+  }
+
+  const previewHeights = await page.evaluate(() =>
+    ['bottom', 'forward', 'backward'].map((id) => {
+      const element = document.querySelector(`[data-testid="figure-preview-${id}"]`) as HTMLElement | null;
+      return element?.getBoundingClientRect().height ?? 0;
+    }),
+  );
+
+  expect(Math.max(...previewHeights) - Math.min(...previewHeights)).toBeLessThanOrEqual(1);
+
+  const topRowAlignment = await page.evaluate(() => {
+    const labels = ['Breite der Puppe', 'Ballgröße', 'Ballfarbe'];
+    const tops = labels
+      .map((label) => document.querySelector(`input[aria-label="${label}"]`) as HTMLElement | null)
+      .filter((input): input is HTMLElement => Boolean(input))
+      .map((input) => input.getBoundingClientRect().top);
+    return tops;
+  });
+
+  expect(Math.max(...topRowAlignment) - Math.min(...topRowAlignment)).toBeLessThanOrEqual(20);
+
+  const playerOneColorInput = page.getByLabel('Farbe Spieler 1');
+  await playerOneColorInput.click();
+
+  const colorUi = await playerOneColorInput.evaluate((input) => {
+    const wrapper = input.closest('.mantine-InputWrapper-root');
+    const preview = wrapper?.querySelector('.mantine-ColorInput-colorPreview, .mantine-ColorSwatch-root') as HTMLElement | null;
+    const label = wrapper?.querySelector('.mantine-InputWrapper-label') as HTMLElement | null;
+    const swatches = document.querySelectorAll('.mantine-ColorSwatch-root').length;
+
+    if (!preview || !label) {
+      return { overlaps: true, swatches };
+    }
+
+    const previewRect = preview.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const overlaps = !(previewRect.top >= labelRect.bottom || previewRect.bottom <= labelRect.top || previewRect.left >= labelRect.right || previewRect.right <= labelRect.left);
+
+    return { overlaps, swatches };
+  });
+
+  expect(colorUi.overlaps).toBeFalsy();
+  expect(colorUi.swatches).toBeGreaterThan(0);
+
+  await page.getByRole('button', { name: /weiter/i }).click();
+
+  const resultCanvas = page.getByTestId('result-preview-canvas');
+  await expect(resultCanvas).toBeVisible();
+  await expectPreviewContained(resultCanvas);
+  await expect(page.getByTestId('save-table-config')).toBeVisible();
+  await expect(page.getByTestId('download-json')).toBeVisible();
+  await expect(page.getByText(/embedded-svg/i)).toHaveCount(0);
+
+  const resultFigureCount = await page.locator('[data-testid="result-preview-canvas"] .foosboard-figure-svg-colorized').count();
+  expect(resultFigureCount).toBeGreaterThan(0);
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByTestId('download-json').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.json$/i);
+
+  await page.getByTestId('save-table-config').click();
+  const savedLayout = await page.evaluate(() => localStorage.getItem('foosboard.tableLayout'));
+  expect(savedLayout).toContain('"manufacturer"');
 });

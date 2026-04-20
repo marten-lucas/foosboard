@@ -1,162 +1,240 @@
 {
-    "meta": {
-        "name": "Ullrich Legacy Table",
-        "sourceAsset": "foosball_table.svg",
-        "legacyViewBox": [
-            610,
-            470
-        ],
-        "description": "Geometry extracted from the original legacy table. Dimensions and proportions stay aligned with the SVG template."
+  "meta": {
+    "name": "Ullrich P4P",
+    "sourceAsset": "field.primary",
+    "legacyViewBox": [
+      610,
+      470
+    ],
+    "description": "Konfigurierter Tisch Ullrich Sport Ullrich P4P"
+  },
+  "settings": {
+    "manufacturer": "Ullrich Sport",
+    "field": {
+      "lengthCm": 120,
+      "widthCm": 68,
+      "goalWidthCm": 20.5,
+      "assetId": "field.primary"
     },
-    "dimensions": {
-        "width": 610,
-        "height": 470,
-        "fieldX": 22.213,
-        "fieldY": 73.35,
-        "fieldWidth": 560.31,
-        "fieldHeight": 320,
-        "frameX": 16.913,
-        "frameY": 68.35,
-        "frameWidth": 570.359,
-        "frameHeight": 330,
-        "goalWidth": 90,
-        "goalDepth": 5.213,
-        "centerCircleRadius": 45,
-        "centerX": 302.368,
-        "centerY": 233.35,
-        "ballRadius": 8.6,
-        "rodMinY": 204.46,
-        "rodMaxY": 262.24,
-        "figureRadius": 12,
-        "figureSpacing": 25
-    },
-    "palette": {
-        "pageBg": "#e9e9e9",
-        "boardOuter": "#2da62d",
-        "boardInner": "#37c837",
-        "fieldLine": "#ffffff",
-        "guide": "rgba(0,0,0,0.22)",
-        "shadow": "rgba(25, 40, 35, 0.18)",
-        "rail": "#b7b7b7"
-    },
-    "rods": [
-        {
-            "id": "P2_1",
-            "label": "Torwart",
-            "team": "orange",
-            "x": 52.0,
-            "playerCount": 1,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                0
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#df6f3d"
+    "configuration": {
+      "rodLengthCm": 128.5,
+      "rodDiameterCm": 1.6,
+      "gripLengthCm": 7,
+      "gripWidthCm": 3,
+      "rows": {
+        "goalkeeper": {
+          "position": 7.5,
+          "playerCount": 1,
+          "spacing": 18.0625,
+          "outerStop": 12
         },
-        {
-            "id": "P2_2",
-            "label": "Abwehr",
-            "team": "orange",
-            "x": 122.0,
-            "playerCount": 2,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                -55,
-                55
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#df6f3d"
+        "defense": {
+          "position": 22.5,
+          "playerCount": 2,
+          "spacing": 23.375,
+          "outerStop": 13
         },
-        {
-            "id": "P1_3",
-            "label": "Angriff",
-            "team": "blue",
-            "x": 192.851,
-            "playerCount": 3,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                -85,
-                0,
-                85
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#4a97d9"
+        "midfield": {
+          "position": 52.5,
+          "playerCount": 5,
+          "spacing": 12.75,
+          "outerStop": 10
         },
-        {
-            "id": "P2_5",
-            "label": "Mittelfeld",
-            "team": "orange",
-            "x": 262.125,
-            "playerCount": 5,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                -120,
-                -60,
-                0,
-                60,
-                120
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#df6f3d"
-        },
-        {
-            "id": "P1_5",
-            "label": "Mittelfeld",
-            "team": "blue",
-            "x": 337.0,
-            "playerCount": 5,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                -120,
-                -60,
-                0,
-                60,
-                120
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#4a97d9"
-        },
-        {
-            "id": "P2_3",
-            "label": "Angriff",
-            "team": "orange",
-            "x": 407.0,
-            "playerCount": 3,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                -85,
-                0,
-                85
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#df6f3d"
-        },
-        {
-            "id": "P1_2",
-            "label": "Abwehr",
-            "team": "blue",
-            "x": 477.0,
-            "playerCount": 2,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                -55,
-                55
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#4a97d9"
-        },
-        {
-            "id": "P1_1",
-            "label": "Torwart",
-            "team": "blue",
-            "x": 547.0,
-            "playerCount": 1,
-            "defaultY": 233.35,
-            "figureOffsets": [
-                0
-            ],
-            "rodColor": "#c9c2b8",
-            "figureColor": "#4a97d9"
+        "offense": {
+          "position": 82.5,
+          "playerCount": 3,
+          "spacing": 18.0625,
+          "outerStop": 11
         }
-    ]
+      }
+    },
+    "figures": {
+      "widthCm": 3.5,
+      "colors": {
+        "player1": "#d9480f",
+        "player2": "#1c7ed6"
+      },
+      "states": {
+        "unten": {
+          "assetId": "figure.bottom",
+          "layer": "P1_1_down",
+          "anchorGroup": "Mount",
+          "collisionGroup": "Hit"
+        },
+        "nachVorn": {
+          "assetId": "figure.forward",
+          "layer": "P1_1_front",
+          "anchorGroup": "Mount",
+          "collisionGroup": "Hit"
+        },
+        "nachHinten": {
+          "assetId": "figure.backward",
+          "layer": "P1_1_back",
+          "anchorGroup": "Mount",
+          "collisionGroup": "Hit"
+        }
+      }
+    },
+    "ball": {
+      "sizeCm": 3.5,
+      "color": "#f5f5f5"
+    }
+  },
+  "assets": {
+    "field.primary": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<!-- Created with Inkscape (http://www.inkscape.org/) -->\n\n<svg\n   id=\"foosboard_svg\"\n   version=\"1.1\"\n   inkscape:version=\"1.4.3 (1:1.4.3+202512261034+0d15f75042)\"\n   sodipodi:docname=\"foosball_table_p4p_field.svg\"\n   title=\"Foosalytics v1.0\"\n   viewBox=\"0 0 610 470\"\n   preserveAspectRatio=\"xMidYMid meet\"\n   width=\"453.5433\"\n   height=\"257.00787\"\n   xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\"\n   xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\"\n   xmlns=\"http://www.w3.org/2000/svg\"\n   xmlns:svg=\"http://www.w3.org/2000/svg\"\n   xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"\n   xmlns:cc=\"http://creativecommons.org/ns#\"\n   xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n  \n  <defs\n     id=\"defs4\">\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:stockid=\"Arrow2Mend\"\n       orient=\"auto\"\n       refY=\"0\"\n       refX=\"0\"\n       id=\"marker1982\"\n       style=\"overflow:visible\"\n       inkscape:isstock=\"true\">\n      <path\n         id=\"path1980\"\n         style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         transform=\"scale(-0.6)\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:stockid=\"Arrow2Mend\"\n       orient=\"auto\"\n       refY=\"0\"\n       refX=\"0\"\n       id=\"Arrow2Mend\"\n       style=\"overflow:visible\"\n       inkscape:isstock=\"true\">\n      <path\n         id=\"path1287\"\n         style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         transform=\"scale(-0.6)\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:stockid=\"Tail\"\n       orient=\"auto\"\n       refY=\"0\"\n       refX=\"0\"\n       id=\"Tail\"\n       style=\"overflow:visible\"\n       inkscape:isstock=\"true\">\n      <g\n         id=\"g1308\"\n         transform=\"scale(-1.2)\"\n         style=\"fill:#000000;fill-opacity:1;stroke:#000000;stroke-opacity:1\">\n        <path\n           id=\"path1296\"\n           d=\"M -3.8048674,-3.9585227 0.54352094,0\"\n           style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.8;stroke-linecap:round;stroke-opacity:1\"\n           inkscape:connector-curvature=\"0\" />\n        <path\n           id=\"path1298\"\n           d=\"M -1.2866832,-3.9585227 3.0617053,0\"\n           style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.8;stroke-linecap:round;stroke-opacity:1\"\n           inkscape:connector-curvature=\"0\" />\n        <path\n           id=\"path1300\"\n           d=\"M 1.3053582,-3.9585227 5.6537466,0\"\n           style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.8;stroke-linecap:round;stroke-opacity:1\"\n           inkscape:connector-curvature=\"0\" />\n        <path\n           id=\"path1302\"\n           d=\"M -3.8048674,4.1775838 0.54352094,0.21974226\"\n           style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.8;stroke-linecap:round;stroke-opacity:1\"\n           inkscape:connector-curvature=\"0\" />\n        <path\n           id=\"path1304\"\n           d=\"M -1.2866832,4.1775838 3.0617053,0.21974226\"\n           style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.8;stroke-linecap:round;stroke-opacity:1\"\n           inkscape:connector-curvature=\"0\" />\n        <path\n           id=\"path1306\"\n           d=\"M 1.3053582,4.1775838 5.6537466,0.21974226\"\n           style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.8;stroke-linecap:round;stroke-opacity:1\"\n           inkscape:connector-curvature=\"0\" />\n      </g>\n    </marker>\n    <marker\n       inkscape:stockid=\"Arrow1Lend\"\n       orient=\"auto\"\n       refY=\"0\"\n       refX=\"0\"\n       id=\"Arrow1Lend\"\n       style=\"overflow:visible\"\n       inkscape:isstock=\"true\">\n      <path\n         id=\"path1263\"\n         d=\"M 0,0 5,-5 -12.5,0 5,5 Z\"\n         style=\"fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:1pt;stroke-opacity:1\"\n         transform=\"matrix(-0.8,0,0,-0.8,-10,0)\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:stockid=\"EmptyTriangleOutL\"\n       orient=\"auto\"\n       refY=\"0\"\n       refX=\"0\"\n       id=\"EmptyTriangleOutL\"\n       style=\"overflow:visible\"\n       inkscape:isstock=\"true\">\n      <path\n         id=\"path1420\"\n         d=\"M 5.77,0 -2.88,5 V -5 Z\"\n         style=\"fill:#ffffff;fill-rule:evenodd;stroke:#000000;stroke-width:1pt;stroke-opacity:1\"\n         transform=\"matrix(0.8,0,0,0.8,-4.8,0)\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-3\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-0\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-6\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-6\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-4\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-3\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-5\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-8\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-53\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-7\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-2\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-5\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n    <marker\n       inkscape:isstock=\"true\"\n       style=\"overflow:visible\"\n       id=\"marker2206-1\"\n       refX=\"0\"\n       refY=\"0\"\n       orient=\"auto\"\n       inkscape:stockid=\"Arrow2Send\">\n      <path\n         transform=\"matrix(-0.3,0,0,-0.3,0.69,0)\"\n         d=\"M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z\"\n         style=\"fill:#a0a0a0;fill-opacity:1;fill-rule:evenodd;stroke:#424242;stroke-width:0.625;stroke-linejoin:round;stroke-opacity:1\"\n         id=\"path2204-76\"\n         inkscape:connector-curvature=\"0\" />\n    </marker>\n  </defs>\n  <sodipodi:namedview\n     id=\"base\"\n     pagecolor=\"#e9e9e9\"\n     bordercolor=\"#666666\"\n     borderopacity=\"1.0\"\n     inkscape:pageopacity=\"0\"\n     inkscape:pageshadow=\"2\"\n     inkscape:zoom=\"0.72618145\"\n     inkscape:cx=\"399.34923\"\n     inkscape:cy=\"121.18183\"\n     inkscape:document-units=\"px\"\n     showgrid=\"true\"\n     inkscape:window-width=\"1920\"\n     inkscape:window-height=\"1168\"\n     inkscape:window-x=\"3000\"\n     inkscape:window-y=\"391\"\n     inkscape:window-maximized=\"1\"\n     showguides=\"true\"\n     inkscape:guide-bbox=\"true\"\n     fit-margin-top=\"5\"\n     fit-margin-left=\"5\"\n     fit-margin-right=\"5\"\n     fit-margin-bottom=\"5\"\n     objecttolerance=\"5\"\n     guidetolerance=\"1\"\n     gridtolerance=\"10000\"\n     inkscape:snap-bbox=\"true\"\n     inkscape:snap-global=\"true\"\n     inkscape:snap-grids=\"false\"\n     inkscape:current-layer=\"table_field\"\n     inkscape:showpageshadow=\"2\"\n     inkscape:pagecheckerboard=\"0\"\n     inkscape:deskcolor=\"#d1d1d1\">\n    <inkscape:grid\n       type=\"xygrid\"\n       id=\"grid2816\"\n       empspacing=\"5\"\n       visible=\"true\"\n       enabled=\"true\"\n       snapvisiblegridlinesonly=\"true\"\n       originx=\"-2.7029183\"\n       originy=\"-152.26796\"\n       spacingx=\"1\"\n       spacingy=\"1\"\n       units=\"px\" />\n    <sodipodi:guide\n       orientation=\"0,1\"\n       position=\"817.29708,2285.4328\"\n       id=\"guide4428\"\n       inkscape:locked=\"false\" />\n    <sodipodi:guide\n       position=\"17.297082,1135.4329\"\n       orientation=\"0,1\"\n       id=\"guide1209\"\n       inkscape:locked=\"false\" />\n    <sodipodi:guide\n       position=\"-12.702918,745.43288\"\n       orientation=\"0,1\"\n       id=\"guide1211\"\n       inkscape:locked=\"false\" />\n  </sodipodi:namedview>\n  \n  <g\n     inkscape:groupmode=\"layer\"\n     id=\"table_field\"\n     inkscape:label=\"table_field\"\n     style=\"display:inline\"\n     transform=\"translate(-2.7029178,-121.34475)\">\n    <rect\n       style=\"display:inline;fill:#37c837;fill-opacity:1;stroke:none;stroke-width:10.0028;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\"\n       id=\"rect2882\"\n       width=\"453.5433\"\n       height=\"257.00778\"\n       x=\"2.7029178\"\n       y=\"121.34475\"\n       inkscape:label=\"floor\" />\n    <g\n       transform=\"matrix(0.80944997,0,0,0.80314963,0.81317746,23.886758)\"\n       style=\"display:inline;stroke-width:1.24025\"\n       id=\"markings\">\n      <path\n         inkscape:connector-curvature=\"0\"\n         id=\"path3657\"\n         d=\"M 2.489842,186.34474 H 132.48984 v 190 H 2.489842\"\n         style=\"fill:none;stroke:#ffffff;stroke-width:2.51378;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <path\n         inkscape:connector-curvature=\"0\"\n         id=\"path3659\"\n         d=\"m 2.489842,211.34474 h 70 v 140 h -70\"\n         style=\"fill:none;stroke:#ffffff;stroke-width:2.57413;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <path\n         inkscape:connector-curvature=\"0\"\n         id=\"path3661\"\n         d=\"M 282.48984,121.34475 V 441.34474\"\n         style=\"fill:none;stroke:#ffffff;stroke-width:2.5001;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <path\n         inkscape:connector-curvature=\"0\"\n         id=\"path3663\"\n         d=\"m 562.48984,186.34474 h -130 v 190 h 130\"\n         style=\"fill:none;stroke:#ffffff;stroke-width:2.51378;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <path\n         inkscape:connector-curvature=\"0\"\n         id=\"path3711\"\n         d=\"m 562.48984,351.34474 h -70 v -140 h 70\"\n         style=\"fill:none;stroke:#ffffff;stroke-width:2.52601;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <circle\n         r=\"3.0000005\"\n         cy=\"281.34476\"\n         cx=\"282.48984\"\n         id=\"path3717\"\n         style=\"fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:0.744146;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <path\n         inkscape:connector-curvature=\"0\"\n         sodipodi:nodetypes=\"cc\"\n         id=\"path3819-6\"\n         d=\"m 132.48984,246.34474 c 30,10 30,60 0,70\"\n         style=\"display:inline;fill:none;stroke:#ffffff;stroke-width:2.48048;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <path\n         inkscape:connector-curvature=\"0\"\n         sodipodi:nodetypes=\"cc\"\n         id=\"path3819-6-5\"\n         d=\"m 432.9086,316.34349 c -30.05929,-9.82036 -30.3584,-59.81946 -0.41876,-69.99875\"\n         style=\"display:inline;fill:none;stroke:#ffffff;stroke-width:2.48048;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" />\n      <circle\n         r=\"45\"\n         cy=\"281.34476\"\n         cx=\"282.48984\"\n         id=\"path3817-6\"\n         style=\"display:inline;fill:none;stroke:#ffffff;stroke-width:2.34993;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1\" />\n    </g>\n  </g>\n  <board_positions>\n    <board_position\n       id=\"saved_pos_12312313\"\n       name=\"gerades System\"\n       player_id=\"P1\">\n      <rod_position\n         id=\"saved_pos_12312313_P1_1\"\n         tilt=\"front\"\n         rod=\"P1_1\"\n         tilt_bak=\"down\">132</rod_position>\n      <rod_position\n         id=\"saved_pos_12312313_P1_2\"\n         tilt=\"front\"\n         rod=\"P1_2\"\n         tilt_bak=\"down\">132</rod_position>\n      <rod_position\n         id=\"saved_pos_12312313_P1_5\"\n         tilt=\"front\"\n         rod=\"P1_5\"\n         tilt_bak=\"down\">132</rod_position>\n      <rod_position\n         id=\"saved_pos_12312313_P1_3\"\n         tilt=\"front\"\n         rod=\"P1_3\"\n         tilt_bak=\"down\">132</rod_position>\n    </board_position>\n  </board_positions>\n</svg>\n",
+    "figure.bottom": "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"xMidYMid meet\" viewBox=\"0 0 610 470\"><g xmlns:ns1=\"http://www.inkscape.org/namespaces/inkscape\" ns1:groupmode=\"layer\" id=\"P1_1_down\" ns1:label=\"P1_1_down\" style=\"display:inline\" transform=\"translate(94.47184,-204.63216)\">\n    <rect y=\"428.71463\" x=\"445.53833\" height=\"20\" width=\"15\" id=\"rect3494-7-0\" style=\"display:inline;fill:#d40000;fill-opacity:1;stroke:none\" ns1:label=\"Mount\"/>\n    <rect style=\"display:inline;fill:#aa0000;stroke:none;stroke-width:3.77953;stroke-linejoin:round\" id=\"rect3\" width=\"5.0000191\" height=\"11.999989\" x=\"450.5383\" y=\"432.71463\" ns1:label=\"Hit\"/>\n    <circle id=\"path4020-6-0-5-3\" style=\"display:inline;fill:#ff0000;fill-opacity:1;stroke:#000000;stroke-width:0.5;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1\" cx=\"453.03833\" cy=\"438.71463\" r=\"5\" ns1:label=\"Head\"/>\n  </g></svg>",
+    "figure.forward": "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"xMidYMid meet\" viewBox=\"0 0 610 470\"><g transform=\"translate(19.510159,-47.994331)\" style=\"display:none;opacity:1\" xmlns:ns1=\"http://www.inkscape.org/namespaces/inkscape\" ns1:label=\"P1_1_front\" id=\"P1_1_front\" ns1:groupmode=\"layer\">\n    <rect y=\"276.97516\" x=\"507.48984\" height=\"10\" width=\"15\" id=\"rect3492\" style=\"fill:#d40000;fill-opacity:1;stroke:none\" ns1:label=\"Foot\"/>\n    <rect y=\"271.97516\" x=\"522.48981\" height=\"20\" width=\"15\" id=\"rect3494\" style=\"fill:#d40000;fill-opacity:1;stroke:none\" ns1:label=\"Mount\"/>\n    <circle r=\"5\" cy=\"281.97516\" cx=\"542.48981\" id=\"path3496\" style=\"display:inline;fill:#d40000;fill-opacity:1;stroke:none;stroke-width:0.84392\" ns1:label=\"Head\"/>\n    <rect y=\"276.97516\" x=\"507.48984\" height=\"10\" width=\"5.5258179\" id=\"rect1\" style=\"display:inline;fill:#aa0000;fill-opacity:1;stroke:none\" ns1:label=\"Hit\"/>\n  </g></svg>",
+    "figure.backward": "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"xMidYMid meet\" viewBox=\"0 0 610 470\"><g xmlns:ns1=\"http://www.inkscape.org/namespaces/inkscape\" ns1:groupmode=\"layer\" id=\"P1_1_back\" ns1:label=\"P1_1_back\" style=\"display:none\" transform=\"translate(94.47184,-204.63216)\">\n    <rect y=\"433.61304\" x=\"462.52814\" height=\"10\" width=\"15\" id=\"rect3492-0\" style=\"fill:#d40000;fill-opacity:1;stroke:none\" ns1:label=\"Foot\"/>\n    <rect y=\"428.61304\" x=\"447.52814\" height=\"20\" width=\"15\" id=\"rect3494-7\" style=\"fill:#d40000;fill-opacity:1;stroke:none\" ns1:label=\"Mount\"/>\n    <circle r=\"5\" cy=\"438.61301\" cx=\"442.52783\" id=\"path3496-6\" style=\"display:inline;fill:#d40000;fill-opacity:1;stroke:none;stroke-width:0.84392\" ns1:label=\"Head\"/>\n    <rect y=\"433.61304\" x=\"472.00232\" height=\"10\" width=\"5.5258179\" id=\"rect2\" style=\"display:inline;fill:#aa0000;fill-opacity:1;stroke:none\" ns1:label=\"Hit\" ns1:transform-center-x=\"-3.507775\" ns1:transform-center-y=\"0.3971066\"/>\n  </g></svg>"
+  },
+  "dimensions": {
+    "width": 610,
+    "height": 470,
+    "fieldX": 22.213,
+    "fieldY": 73.35,
+    "fieldWidth": 560.31,
+    "fieldHeight": 320,
+    "frameX": 17.213,
+    "frameY": 68.35,
+    "frameWidth": 570.31,
+    "frameHeight": 330,
+    "goalWidth": 96.47058823529412,
+    "goalDepth": 5.213,
+    "centerCircleRadius": 45,
+    "centerX": 302.368,
+    "centerY": 233.35,
+    "ballRadius": 8.235294117647058,
+    "rodMinY": 113.35,
+    "rodMaxY": 353.35,
+    "figureRadius": 6,
+    "figureSpacing": 60
+  },
+  "palette": {
+    "pageBg": "#e9e9e9",
+    "boardOuter": "#2da62d",
+    "boardInner": "#37c837",
+    "fieldLine": "#ffffff",
+    "guide": "rgba(0,0,0,0.22)",
+    "shadow": "rgba(25, 40, 35, 0.18)",
+    "rail": "#b7b7b7"
+  },
+  "rods": [
+    {
+      "id": "P2_1",
+      "label": "Torwart",
+      "team": "orange",
+      "x": 57.232375,
+      "playerCount": 1,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        0
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#d9480f"
+    },
+    {
+      "id": "P2_2",
+      "label": "Abwehr",
+      "team": "orange",
+      "x": 127.27112499999998,
+      "playerCount": 2,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        -55,
+        55
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#d9480f"
+    },
+    {
+      "id": "P1_3",
+      "label": "Angriff",
+      "team": "blue",
+      "x": 197.30987499999992,
+      "playerCount": 3,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        -85,
+        0,
+        85
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#1c7ed6"
+    },
+    {
+      "id": "P2_5",
+      "label": "Mittelfeld",
+      "team": "orange",
+      "x": 267.34862499999997,
+      "playerCount": 5,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        -120,
+        -60,
+        0,
+        60,
+        120
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#d9480f"
+    },
+    {
+      "id": "P1_5",
+      "label": "Mittelfeld",
+      "team": "blue",
+      "x": 337.3873749999999,
+      "playerCount": 5,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        -120,
+        -60,
+        0,
+        60,
+        120
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#1c7ed6"
+    },
+    {
+      "id": "P2_3",
+      "label": "Angriff",
+      "team": "orange",
+      "x": 407.426125,
+      "playerCount": 3,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        -85,
+        0,
+        85
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#d9480f"
+    },
+    {
+      "id": "P1_2",
+      "label": "Abwehr",
+      "team": "blue",
+      "x": 477.4648749999999,
+      "playerCount": 2,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        -55,
+        55
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#1c7ed6"
+    },
+    {
+      "id": "P1_1",
+      "label": "Torwart",
+      "team": "blue",
+      "x": 547.5036249999999,
+      "playerCount": 1,
+      "defaultY": 233.35,
+      "figureOffsets": [
+        0
+      ],
+      "rodColor": "#c9c2b8",
+      "figureColor": "#1c7ed6"
+    }
+  ]
 }

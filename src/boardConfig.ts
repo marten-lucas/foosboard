@@ -1,4 +1,5 @@
 import tableLayout from './data/tableLayout.json';
+import type { StoredTableLayout } from './lib/tableLayout';
 
 export type RodId =
   | 'P2_1'
@@ -62,6 +63,8 @@ export interface BoardConfig {
     legacyViewBox: [number, number];
     description: string;
   };
+  assets: Record<string, string>;
+  settings?: StoredTableLayout['settings'];
 }
 
 export interface BallState {
@@ -98,17 +101,34 @@ export interface SerializableScene {
   activeShotColor: string;
 }
 
-export const boardConfig: BoardConfig = {
-  ...tableLayout.dimensions,
-  rods: tableLayout.rods as RodConfig[],
-  colors: tableLayout.palette,
-  legacy: {
-    name: tableLayout.meta.name,
-    sourceAsset: tableLayout.meta.sourceAsset,
-    legacyViewBox: tableLayout.meta.legacyViewBox as [number, number],
-    description: tableLayout.meta.description,
-  },
-};
+function resolveStoredLayout(): StoredTableLayout {
+  return tableLayout as StoredTableLayout;
+}
+
+function createBoardConfigFromLayout(layout: StoredTableLayout): BoardConfig {
+  return {
+    ...layout.dimensions,
+    rods: layout.rods as RodConfig[],
+    colors: layout.palette,
+    legacy: {
+      name: layout.meta.name,
+      sourceAsset: layout.meta.sourceAsset,
+      legacyViewBox: layout.meta.legacyViewBox as [number, number],
+      description: layout.meta.description,
+    },
+    assets: layout.assets || {},
+    settings: layout.settings,
+  };
+}
+
+let currentLayout = resolveStoredLayout();
+
+export const boardConfig: BoardConfig = createBoardConfigFromLayout(currentLayout);
+
+export function applyTableLayout(layout: StoredTableLayout) {
+  currentLayout = layout;
+  Object.assign(boardConfig, createBoardConfigFromLayout(layout));
+}
 
 const defaultRodStates = boardConfig.rods.reduce((accumulator, rod) => {
   accumulator[rod.id] = { y: rod.defaultY, tilt: 'neutral' };

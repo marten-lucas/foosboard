@@ -1,23 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActionIcon,
-  AppShell,
-  Badge,
-  Button,
-  Card,
-  Divider,
-  Group,
-  Paper,
-  SegmentedControl,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { AppShell } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { Ban, Copy, Eye, Layers3, Play, RotateCcw, Save, Shield, Sparkles, Trash2 } from 'lucide-react';
-import { boardConfig, type RodConfig, type RodState, type SerializableScene } from './boardConfig';
-import { clamp, decodeScene, encodeScene, projectGoalShadows, traceShot, type FigureHit, type Point } from './geometry';
+import { boardConfig, applyTableLayout, type RodConfig, type SerializableScene } from './boardConfig';
+import { BoardCanvas } from './components/BoardCanvas';
+import { BoardMenu } from './components/BoardMenu';
+import { TableConfigForm } from './components/TableConfigForm';
+import { clamp, decodeScene, encodeScene, type Point } from './geometry';
+import { buildTableLayoutFromDraft, defaultTableDraft, type SvgLayerData } from './lib/tableLayout';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
 type DragState =
@@ -35,46 +24,18 @@ type DragState =
     }
   | null;
 
-const colorChoices = [
-  { value: '#ff7a3d', label: 'Orange' },
-  { value: '#4fa3f7', label: 'Blau' },
-  { value: '#22c55e', label: 'Grün' },
-  { value: '#f4bf4f', label: 'Gelb' },
-];
+type FigureStateKey = 'unten' | 'nachVorn' | 'nachHinten';
 
-const legacyGuideYs = [188.29, 206.29, 224.29, 242.29, 260.29, 278.29];
-
-function getRodOffsets(rod: RodConfig): number[] {
-  if (rod.figureOffsets && rod.figureOffsets.length > 0) {
-    return rod.figureOffsets;
-  }
-
-  const centerYOffset = (rod.playerCount - 1) * boardConfig.figureSpacing * 0.5;
-  return Array.from({ length: rod.playerCount }, (_, index) => index * boardConfig.figureSpacing - centerYOffset);
-}
-
-function renderLegacyFigure(
-  rod: RodConfig,
-  tilt: RodState['tilt'],
-  offset: number,
-  onToggle: (event: React.MouseEvent<SVGGElement>) => void,
-) {
-  const shiftX = tilt === 'front' ? 7.5 : tilt === 'back' ? -7.5 : 0;
-  const bodyX = tilt === 'back' ? -15 : 0;
-
-  return (
-    <g transform={`translate(${shiftX}, ${offset})`} onClick={onToggle} style={{ cursor: 'pointer' }}>
-      <rect x={-7.5} y={-15} width={15} height={5} fill="#111" />
-      <rect x={-7.5} y={10} width={15} height={5} fill="#111" />
-      <rect x={bodyX} y={-10} width={15} height={20} fill={rod.figureColor} stroke={tilt === 'neutral' ? 'rgba(15, 29, 25, 0.58)' : 'none'} strokeWidth={0.6} />
-      {tilt === 'neutral' ? (
-        <circle cx={0} cy={0} r={5} fill="none" stroke="#111" strokeWidth={0.5} />
-      ) : (
-        <rect x={tilt === 'back' ? 0 : -15} y={-5} width={15} height={10} fill={rod.figureColor} opacity={0.92} />
-      )}
-    </g>
-  );
-}
+type FigurePlacement = {
+  bounds: {
+    width: number;
+    height: number;
+  };
+  anchor: {
+    x: number;
+    y: number;
+  };
+};
 
 function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null): Point {
   if (!svg) {
@@ -88,61 +49,706 @@ function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, 
   };
 }
 
-function buildFigureHits(rods: SerializableScene['rods']): FigureHit[] {
-  return boardConfig.rods.flatMap((rod) => {
-    const state = rods[rod.id];
-    const offsets = getRodOffsets(rod);
-    const tiltShift = state.tilt === 'front' ? 7.5 : state.tilt === 'back' ? -7.5 : 0;
-    const radius = state.tilt === 'neutral' ? boardConfig.figureRadius : boardConfig.figureRadius * 0.92;
+function findMatchingOption(options: string[], terms: string[], fallbackIndex = 0) {
+  const normalizedTerms = terms.map((term) => term.toLowerCase());
+  return (
+    options.find((option) => normalizedTerms.some((term) => option.toLowerCase().includes(term))) ||
+    options[fallbackIndex] ||
+    ''
+  );
+}
 
-    return offsets.map((offset, index) => ({
-      id: `${rod.id}-${index}`,
-      rodId: rod.id,
-      center: {
-        x: rod.x + tiltShift,
-        y: state.y + offset,
-      },
-      radius,
-    })) satisfies FigureHit[];
+function findMatchingGeometry(options: string[], terms: string[]) {
+  return findMatchingOption(options, terms, 0);
+}
+
+type Bounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+type SvgTransform = {
+  tx: number;
+  ty: number;
+  sx: number;
+  sy: number;
+};
+
+function getSvgNodeName(node: Element, fallback: string) {
+  return (node.getAttribute('inkscape:label') || node.getAttribute('label') || node.getAttribute('id') || fallback).trim();
+}
+
+function mergeBounds(current: Bounds | null, next: Bounds | null): Bounds | null {
+  if (!current) {
+    return next;
+  }
+
+  if (!next) {
+    return current;
+  }
+
+  return {
+    minX: Math.min(current.minX, next.minX),
+    minY: Math.min(current.minY, next.minY),
+    maxX: Math.max(current.maxX, next.maxX),
+    maxY: Math.max(current.maxY, next.maxY),
+  };
+}
+
+function parseSvgTransform(transform: string | null): SvgTransform {
+  const parsed: SvgTransform = { tx: 0, ty: 0, sx: 1, sy: 1 };
+
+  if (!transform) {
+    return parsed;
+  }
+
+  const translateMatch = transform.match(/translate\(([-\d.]+)(?:[ ,]+([-\d.]+))?\)/i);
+  if (translateMatch) {
+    parsed.tx = Number(translateMatch[1]) || 0;
+    parsed.ty = Number(translateMatch[2]) || 0;
+  }
+
+  const scaleMatch = transform.match(/scale\(([-\d.]+)(?:[ ,]+([-\d.]+))?\)/i);
+  if (scaleMatch) {
+    parsed.sx = Number(scaleMatch[1]) || 1;
+    parsed.sy = Number(scaleMatch[2]) || parsed.sx;
+  }
+
+  const matrixMatch = transform.match(/matrix\(([-\d., eE]+)\)/i);
+  if (matrixMatch) {
+    const values = matrixMatch[1]
+      .split(/[ ,]+/)
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+
+    if (values.length === 6) {
+      parsed.sx *= values[0] || 1;
+      parsed.sy *= values[3] || 1;
+      parsed.tx += values[4] || 0;
+      parsed.ty += values[5] || 0;
+    }
+  }
+
+  return parsed;
+}
+
+function combineSvgTransforms(parent: SvgTransform, child: SvgTransform): SvgTransform {
+  return {
+    sx: parent.sx * child.sx,
+    sy: parent.sy * child.sy,
+    tx: parent.tx + child.tx * parent.sx,
+    ty: parent.ty + child.ty * parent.sy,
+  };
+}
+
+function applyTransformToBounds(bounds: Bounds | null, transform: SvgTransform): Bounds | null {
+  if (!bounds) {
+    return null;
+  }
+
+  const x1 = bounds.minX * transform.sx + transform.tx;
+  const x2 = bounds.maxX * transform.sx + transform.tx;
+  const y1 = bounds.minY * transform.sy + transform.ty;
+  const y2 = bounds.maxY * transform.sy + transform.ty;
+
+  return {
+    minX: Math.min(x1, x2),
+    minY: Math.min(y1, y2),
+    maxX: Math.max(x1, x2),
+    maxY: Math.max(y1, y2),
+  };
+}
+
+function createBoundsFromPairs(values: number[]): Bounds | null {
+  if (values.length < 2) {
+    return null;
+  }
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (let index = 0; index < values.length - 1; index += 2) {
+    const x = values[index];
+    const y = values[index + 1];
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+}
+
+function getNodeBounds(node: Element, inheritedTransform: SvgTransform = { tx: 0, ty: 0, sx: 1, sy: 1 }): Bounds | null {
+  const tagName = node.tagName.toLowerCase();
+  const currentTransform = combineSvgTransforms(inheritedTransform, parseSvgTransform(node.getAttribute('transform')));
+
+  if (tagName === 'g' || tagName === 'svg') {
+    return Array.from(node.children).reduce<Bounds | null>(
+      (accumulator, child) => mergeBounds(accumulator, getNodeBounds(child as Element, currentTransform)),
+      null,
+    );
+  }
+
+  if (tagName === 'rect') {
+    const x = Number(node.getAttribute('x') || 0);
+    const y = Number(node.getAttribute('y') || 0);
+    const width = Number(node.getAttribute('width') || 0);
+    const height = Number(node.getAttribute('height') || 0);
+    return applyTransformToBounds({ minX: x, minY: y, maxX: x + width, maxY: y + height }, currentTransform);
+  }
+
+  if (tagName === 'circle') {
+    const cx = Number(node.getAttribute('cx') || 0);
+    const cy = Number(node.getAttribute('cy') || 0);
+    const r = Number(node.getAttribute('r') || 0);
+    return applyTransformToBounds({ minX: cx - r, minY: cy - r, maxX: cx + r, maxY: cy + r }, currentTransform);
+  }
+
+  if (tagName === 'ellipse') {
+    const cx = Number(node.getAttribute('cx') || 0);
+    const cy = Number(node.getAttribute('cy') || 0);
+    const rx = Number(node.getAttribute('rx') || 0);
+    const ry = Number(node.getAttribute('ry') || 0);
+    return applyTransformToBounds({ minX: cx - rx, minY: cy - ry, maxX: cx + rx, maxY: cy + ry }, currentTransform);
+  }
+
+  if (tagName === 'line') {
+    const x1 = Number(node.getAttribute('x1') || 0);
+    const y1 = Number(node.getAttribute('y1') || 0);
+    const x2 = Number(node.getAttribute('x2') || 0);
+    const y2 = Number(node.getAttribute('y2') || 0);
+    return applyTransformToBounds({ minX: Math.min(x1, x2), minY: Math.min(y1, y2), maxX: Math.max(x1, x2), maxY: Math.max(y1, y2) }, currentTransform);
+  }
+
+  if (tagName === 'polygon' || tagName === 'polyline') {
+    const points = (node.getAttribute('points') || '')
+      .trim()
+      .split(/\s+|,/)
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+    return applyTransformToBounds(createBoundsFromPairs(points), currentTransform);
+  }
+
+  if (tagName === 'path') {
+    const numbers = ((node.getAttribute('d') || '').match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+    return applyTransformToBounds(createBoundsFromPairs(numbers), currentTransform);
+  }
+
+  return null;
+}
+
+function getRenderedSvgBounds(root: Element): Bounds | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const host = document.createElement('div');
+  host.style.position = 'fixed';
+  host.style.left = '-10000px';
+  host.style.top = '-10000px';
+  host.style.width = '1px';
+  host.style.height = '1px';
+  host.style.opacity = '0';
+  host.style.pointerEvents = 'none';
+
+  const measurementRoot = (root.cloneNode(true) as Element);
+  revealSvgNode(measurementRoot);
+
+  const svgRoot = measurementRoot.tagName.toLowerCase() === 'svg'
+    ? (measurementRoot as SVGSVGElement)
+    : (() => {
+        const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        wrapper.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        wrapper.appendChild(measurementRoot);
+        return wrapper;
+      })();
+
+  const normalizedViewBox = svgRoot.getAttribute('viewBox') || svgRoot.getAttribute('viewbox');
+  if (normalizedViewBox) {
+    svgRoot.setAttribute('viewBox', normalizedViewBox);
+  }
+  svgRoot.setAttribute('width', '1000');
+  svgRoot.setAttribute('height', '1000');
+
+  host.appendChild(svgRoot);
+  document.body.appendChild(host);
+
+  const selectors = 'g, path, rect, circle, ellipse, polygon, polyline, line, use';
+  const bounds = Array.from(svgRoot.querySelectorAll(selectors)).reduce<Bounds | null>((accumulator, element) => {
+    if (element.closest('defs, marker, clipPath, mask, pattern, symbol')) {
+      return accumulator;
+    }
+
+    try {
+      const box = (element as SVGGraphicsElement).getBBox();
+      if (!Number.isFinite(box.x) || !Number.isFinite(box.y) || (box.width === 0 && box.height === 0)) {
+        return accumulator;
+      }
+
+      return mergeBounds(accumulator, {
+        minX: box.x,
+        minY: box.y,
+        maxX: box.x + box.width,
+        maxY: box.y + box.height,
+      });
+    } catch {
+      return accumulator;
+    }
+  }, null);
+
+  document.body.removeChild(host);
+  return bounds;
+}
+
+function revealSvgNode(node: Element) {
+  node.removeAttribute('display');
+  node.removeAttribute('visibility');
+  node.removeAttribute('hidden');
+  node.setAttribute('opacity', '1');
+
+  const style = node.getAttribute('style');
+  if (style) {
+    node.setAttribute(
+      'style',
+      style
+        .replace(/display\s*:\s*none;?/gi, '')
+        .replace(/visibility\s*:\s*hidden;?/gi, '')
+        .replace(/opacity\s*:\s*0;?/gi, ''),
+    );
+  }
+
+  Array.from(node.children).forEach((child) => revealSvgNode(child as Element));
+}
+
+function stripSvgTextMetadata(svgMarkup: string) {
+  return svgMarkup
+    .replace(/<title[\s\S]*?<\/title>/gi, '')
+    .replace(/<desc[\s\S]*?<\/desc>/gi, '')
+    .replace(/<metadata[\s\S]*?<\/metadata>/gi, '');
+}
+
+function sanitizeSvgMarkup(svgMarkup: string) {
+  const cleaned = stripSvgTextMetadata(svgMarkup).replace(/<\?xml[\s\S]*?\?>/gi, '').trim();
+  let seenDefaultXmlns = false;
+
+  return cleaned.replace(/\sxmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, () => {
+    if (seenDefaultXmlns) {
+      return '';
+    }
+
+    seenDefaultXmlns = true;
+    return ' xmlns="http://www.w3.org/2000/svg"';
   });
 }
 
-function sceneToHash(scene: SerializableScene): string {
-  return `scene=${encodeScene(scene)}`;
+function normalizeFieldSvgMarkup(svgMarkup: string) {
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return sanitizeSvgMarkup(svgMarkup);
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sanitizeSvgMarkup(svgMarkup), 'image/svg+xml');
+    const root = doc.querySelector('svg');
+
+    if (!root) {
+      return svgMarkup;
+    }
+
+    revealSvgNode(root);
+    const intrinsicWidth = Number.parseFloat(root.getAttribute('width') || '');
+    const intrinsicHeight = Number.parseFloat(root.getAttribute('height') || '');
+    root.removeAttribute('viewbox');
+    root.removeAttribute('viewBox');
+    if (Number.isFinite(intrinsicWidth) && Number.isFinite(intrinsicHeight) && intrinsicWidth > 0 && intrinsicHeight > 0) {
+      root.setAttribute('viewBox', `0 0 ${intrinsicWidth} ${intrinsicHeight}`);
+    } else {
+      const normalizedViewBox = root.getAttribute('viewBox') || root.getAttribute('viewbox');
+      if (normalizedViewBox) {
+        root.setAttribute('viewBox', normalizedViewBox);
+      }
+    }
+    root.setAttribute('width', '100%');
+    root.setAttribute('height', '100%');
+    root.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    return new XMLSerializer().serializeToString(root);
+  } catch {
+    return svgMarkup;
+  }
+}
+
+function normalizeSvgMarkup(svgMarkup: string, preserveAspectRatio: string, autoFit = false, paddingRatio = 0.02, minPadding = 1) {
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return sanitizeSvgMarkup(svgMarkup);
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sanitizeSvgMarkup(svgMarkup), 'image/svg+xml');
+    const root = doc.querySelector('svg');
+
+    if (!root) {
+      return svgMarkup;
+    }
+
+    revealSvgNode(root);
+    const normalizedViewBox = root.getAttribute('viewBox') || root.getAttribute('viewbox');
+    const originalWidth = Number.parseFloat(root.getAttribute('width') || '');
+    const originalHeight = Number.parseFloat(root.getAttribute('height') || '');
+    root.removeAttribute('viewbox');
+    root.removeAttribute('viewBox');
+    if (normalizedViewBox) {
+      root.setAttribute('viewBox', normalizedViewBox);
+    }
+    root.setAttribute('width', '100%');
+    root.setAttribute('height', '100%');
+    root.setAttribute('preserveAspectRatio', preserveAspectRatio);
+
+    if (autoFit) {
+      const intrinsicWidth = originalWidth;
+      const intrinsicHeight = originalHeight;
+      const intrinsicBounds =
+        preserveAspectRatio === 'none' && Number.isFinite(intrinsicWidth) && Number.isFinite(intrinsicHeight) && intrinsicWidth > 0 && intrinsicHeight > 0
+          ? { minX: 0, minY: 0, maxX: intrinsicWidth, maxY: intrinsicHeight }
+          : null;
+      const bounds = intrinsicBounds ?? getNodeBounds(root) ?? getRenderedSvgBounds(root);
+      if (bounds) {
+        const paddingX = Math.max((bounds.maxX - bounds.minX) * paddingRatio, minPadding);
+        const paddingY = Math.max((bounds.maxY - bounds.minY) * paddingRatio, minPadding);
+        root.setAttribute(
+          'viewBox',
+          `${bounds.minX - paddingX} ${bounds.minY - paddingY} ${Math.max(bounds.maxX - bounds.minX + paddingX * 2, 1)} ${Math.max(bounds.maxY - bounds.minY + paddingY * 2, 1)}`,
+        );
+      }
+    }
+
+    return new XMLSerializer().serializeToString(root);
+  } catch {
+    return svgMarkup;
+  }
+}
+
+function findSvgNodeByName(root: Element, targetName: string) {
+  const normalizedTarget = targetName.trim().toLowerCase();
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  const nodes = [
+    root,
+    ...Array.from(root.querySelectorAll('g[id], g[label], g[inkscape\\:label], path[id], rect[id], circle[id], ellipse[id], polygon[id], polyline[id], line[id], use[id]')),
+  ] as Element[];
+
+  return (
+    nodes.find((node) => getSvgNodeName(node, '').toLowerCase() === normalizedTarget) ||
+    nodes.find((node) => getSvgNodeName(node, '').toLowerCase().includes(normalizedTarget)) ||
+    null
+  );
+}
+
+function getFigurePlacement(svgMarkup: string, anchorGroup: string): FigurePlacement {
+  const fallback: FigurePlacement = {
+    bounds: { width: 10, height: 20 },
+    anchor: { x: 0.5, y: 0.5 },
+  };
+
+  if (!svgMarkup || typeof DOMParser === 'undefined') {
+    return fallback;
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(stripSvgTextMetadata(svgMarkup), 'image/svg+xml');
+    const root = doc.querySelector('svg');
+
+    if (!root) {
+      return fallback;
+    }
+
+    revealSvgNode(root);
+    const assetBounds = getRenderedSvgBounds(root) ?? getNodeBounds(root);
+    if (!assetBounds) {
+      return fallback;
+    }
+
+    const width = Math.max(assetBounds.maxX - assetBounds.minX, 1);
+    const height = Math.max(assetBounds.maxY - assetBounds.minY, 1);
+    const anchorNode = findSvgNodeByName(root, anchorGroup);
+    const anchorBounds = anchorNode ? getNodeBounds(anchorNode) : null;
+
+    return {
+      bounds: { width, height },
+      anchor: {
+        x: anchorBounds ? clamp(((anchorBounds.minX + anchorBounds.maxX) / 2 - assetBounds.minX) / width, 0, 1) : 0.5,
+        y: anchorBounds ? clamp(((anchorBounds.minY + anchorBounds.maxY) / 2 - assetBounds.minY) / height, 0, 1) : 0.5,
+      },
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function extractSvgLayerData(svgMarkup: string): Record<string, SvgLayerData> {
+  const fallbackOptions = ['Torso', 'Fuß', 'Verbindungssteg'];
+  const fallbackPreview = normalizeSvgMarkup(svgMarkup || '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>', 'xMidYMid meet');
+
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return {
+      unten: { preview: fallbackPreview, geometryOptions: fallbackOptions },
+      'nach vorn': { preview: fallbackPreview, geometryOptions: fallbackOptions },
+      'nach hinten': { preview: fallbackPreview, geometryOptions: fallbackOptions },
+    };
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sanitizeSvgMarkup(svgMarkup), 'image/svg+xml');
+    const root = doc.querySelector('svg');
+
+    if (!root) {
+      throw new Error('Missing svg root');
+    }
+
+    const serializer = new XMLSerializer();
+    const layerNodes = Array.from(root.children).filter((child) => child.matches('g[id], g[label], g[inkscape\\:label]')) as Element[];
+    const usableLayers = layerNodes.length > 0 ? layerNodes : [root];
+
+    return Object.fromEntries(
+      usableLayers.map((node, index) => {
+        const layerName = getSvgNodeName(node, `Layer ${index + 1}`);
+        const geometryNodes = Array.from(
+          node.querySelectorAll('g[id], g[label], g[inkscape\\:label], path[id], rect[id], circle[id], ellipse[id], polygon[id], polyline[id], line[id], use[id]'),
+        );
+        const geometryOptions = Array.from(
+          new Set(
+            geometryNodes.map((child, childIndex) => getSvgNodeName(child, `${child.tagName.toLowerCase()} ${childIndex + 1}`)).filter(Boolean),
+          ),
+        );
+
+        const previewDoc = document.implementation.createDocument('http://www.w3.org/2000/svg', 'svg', null);
+        const previewRoot = previewDoc.documentElement;
+        previewRoot.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        previewRoot.setAttribute('width', '100%');
+        previewRoot.setAttribute('height', '100%');
+        previewRoot.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+        const previewNode = node.cloneNode(true) as Element;
+        revealSvgNode(previewNode);
+        previewRoot.appendChild(previewNode);
+
+        const bounds = getNodeBounds(previewNode);
+        if (bounds) {
+          const paddingX = Math.max((bounds.maxX - bounds.minX) * 0.08, 2);
+          const paddingY = Math.max((bounds.maxY - bounds.minY) * 0.08, 2);
+          previewRoot.setAttribute(
+            'viewBox',
+            `${bounds.minX - paddingX} ${bounds.minY - paddingY} ${Math.max(bounds.maxX - bounds.minX + paddingX * 2, 1)} ${Math.max(bounds.maxY - bounds.minY + paddingY * 2, 1)}`,
+          );
+        } else if (root.getAttribute('viewBox')) {
+          previewRoot.setAttribute('viewBox', root.getAttribute('viewBox') || '0 0 100 100');
+        } else {
+          previewRoot.setAttribute('viewBox', '0 0 100 100');
+        }
+
+        return [
+          layerName,
+          {
+            preview: normalizeSvgMarkup(serializer.serializeToString(previewRoot), 'xMidYMid meet', false, 0.08, 0),
+            geometryOptions: geometryOptions.length > 0 ? geometryOptions : fallbackOptions,
+            bounds: bounds
+              ? {
+                  width: Math.max(bounds.maxX - bounds.minX, 1),
+                  height: Math.max(bounds.maxY - bounds.minY, 1),
+                }
+              : undefined,
+          },
+        ];
+      }),
+    );
+  } catch {
+    return {
+      unten: { preview: fallbackPreview, geometryOptions: fallbackOptions },
+      'nach vorn': { preview: fallbackPreview, geometryOptions: fallbackOptions },
+      'nach hinten': { preview: fallbackPreview, geometryOptions: fallbackOptions },
+    };
+  }
 }
 
 function App() {
-  const isCompact = useMediaQuery('(max-width: 1080px)');
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState>(null);
+  const isMobile = useMediaQuery('(max-width: 48em)');
+  const selectedTable = boardConfig.legacy.name;
+  const [configDrawerOpened, setConfigDrawerOpened] = useState(false);
+  const [configStep, setConfigStep] = useState(0);
+  const [svgPreviews, setSvgPreviews] = useState<Record<string, string>>({});
+  const [tableDraft, setTableDraft] = useState(defaultTableDraft);
   const [snapshotName, setSnapshotName] = useState('');
   const [shareLink, setShareLink] = useState('');
-  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const [figureLayerOptions, setFigureLayerOptions] = useState(['unten', 'nach vorn', 'nach hinten']);
+  const [figureLayerData, setFigureLayerData] = useState<Record<string, SvgLayerData>>({});
 
+  const updateRowConfig = (
+    row: 'goalkeeper' | 'defense' | 'midfield' | 'offense',
+    field: 'position' | 'playerCount' | 'spacing' | 'outerStop',
+    value: string | number,
+  ) => {
+    setTableDraft((current) => ({
+      ...current,
+      rows: {
+        ...current.rows,
+        [row]: {
+          ...current.rows[row],
+          [field]: Number(value) || 0,
+        },
+      },
+    }));
+  };
+
+  const handleSvgDrop = (key: string) => (files: File[]) => {
+    const file = files[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const svgMarkup = String(reader.result || '');
+      const isFieldUpload = key === 'field';
+      const normalizedMarkup = isFieldUpload
+        ? normalizeFieldSvgMarkup(svgMarkup)
+        : normalizeSvgMarkup(svgMarkup, 'xMidYMid meet', false, 0.02, 0);
+      setSvgPreviews((current) => ({ ...current, [key]: normalizedMarkup }));
+
+      if (key === 'figureSource') {
+        const layerData = extractSvgLayerData(svgMarkup);
+        const options = Object.keys(layerData);
+        const bottomLayer = findMatchingOption(options, ['down', 'unten'], 0);
+        const forwardLayer = findMatchingOption(options, ['front', 'vorn', 'forward'], 1);
+        const backwardLayer = findMatchingOption(options, ['back', 'hinten', 'backward'], 2);
+        const bottomGeometry = layerData[bottomLayer]?.geometryOptions ?? ['Mount', 'Hit'];
+        const forwardGeometry = layerData[forwardLayer]?.geometryOptions ?? ['Mount', 'Hit'];
+        const backwardGeometry = layerData[backwardLayer]?.geometryOptions ?? ['Mount', 'Hit'];
+
+        setFigureLayerData(layerData);
+        setFigureLayerOptions(options);
+        setTableDraft((current) => ({
+          ...current,
+          figureLayerBottom: options.includes(current.figureLayerBottom) ? current.figureLayerBottom : bottomLayer,
+          figureLayerForward: options.includes(current.figureLayerForward) ? current.figureLayerForward : forwardLayer,
+          figureLayerBackward: options.includes(current.figureLayerBackward) ? current.figureLayerBackward : backwardLayer,
+          bottomAnchorGroup: findMatchingGeometry(bottomGeometry, ['mount']) || current.bottomAnchorGroup,
+          bottomCollisionGroup: findMatchingGeometry(bottomGeometry, ['hit']) || current.bottomCollisionGroup,
+          forwardAnchorGroup: findMatchingGeometry(forwardGeometry, ['mount']) || current.forwardAnchorGroup,
+          forwardCollisionGroup: findMatchingGeometry(forwardGeometry, ['hit']) || current.forwardCollisionGroup,
+          backwardAnchorGroup: findMatchingGeometry(backwardGeometry, ['mount']) || current.backwardAnchorGroup,
+          backwardCollisionGroup: findMatchingGeometry(backwardGeometry, ['hit']) || current.backwardCollisionGroup,
+        }));
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const previewPaddingX = 10;
+  const previewPaddingY = 10;
+  const frameThickness = 2;
+  const gripThickness = 4;
+  const gripLength = 13;
+  const colorSwatches = ['#2e2e2e', '#868e96', '#fa5252', '#e64980', '#be4bdb', '#7950f2', '#4c6ef5', '#228be6', '#15aabf', '#12b886', '#40c057', '#82c91e', '#fab005', '#fd7e14'];
+  const rodExtension = Math.max((tableDraft.rodLength - tableDraft.fieldWidth) / 2, 0);
+  const fieldPreviewWidth = tableDraft.fieldLength + previewPaddingX * 2;
+  const fieldPreviewHeight = tableDraft.fieldWidth + previewPaddingY * 2;
+  const rodPreviewWidth = fieldPreviewWidth;
+  const rodPreviewHeight = tableDraft.fieldWidth + previewPaddingY * 2 + rodExtension * 2;
+  const previewFieldX = previewPaddingX;
+  const fieldPreviewY = previewPaddingY;
+  const rodPreviewFieldY = previewPaddingY + rodExtension;
+  const previewFieldWidth = tableDraft.fieldLength;
+  const previewFieldHeight = tableDraft.fieldWidth;
+
+  const buildPreviewFigurePositions = (row: { playerCount: number; spacing: number }) =>
+    Array.from({ length: row.playerCount }, (_, index) =>
+      clamp(
+        tableDraft.fieldWidth / 2 + (index - (row.playerCount - 1) / 2) * row.spacing,
+        2,
+        Math.max(tableDraft.fieldWidth - 2, 2),
+      ),
+    );
+
+  const renderFieldPreviewBase = (viewWidth: number, viewHeight: number, fieldTop: number, showBaseField = true) => {
+    const goalHeight = (tableDraft.goalWidth / Math.max(tableDraft.fieldWidth, 1)) * previewFieldHeight;
+    const goalY = fieldTop + (previewFieldHeight - goalHeight) / 2;
+    const goalDepth = Math.max(frameThickness / 2, 1);
+
+    return (
+      <svg viewBox={`0 0 ${viewWidth} ${viewHeight}`} className="foosboard-table-preview" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+        <rect x="0" y="0" width={viewWidth} height={viewHeight} rx="2" fill="#d9d9d9" />
+        {showBaseField ? <rect x={previewFieldX} y={fieldTop} width={previewFieldWidth} height={previewFieldHeight} fill="#69db7c" /> : null}
+        <rect x={previewFieldX - goalDepth} y={goalY} width={goalDepth} height={goalHeight} fill="#ffffff" />
+        <rect x={previewFieldX + previewFieldWidth} y={goalY} width={goalDepth} height={goalHeight} fill="#ffffff" />
+      </svg>
+    );
+  };
+
+  const getGeometryOptionsForLayer = (layerName: string) => figureLayerData[layerName]?.geometryOptions ?? ['Verbindungssteg', 'Torso', 'Fuß'];
+  const getLayerPreview = (layerName: string) => figureLayerData[layerName]?.preview || '';
+  const getLayerBounds = (layerName: string) => figureLayerData[layerName]?.bounds;
+  const hasFieldUpload = Boolean(svgPreviews.field);
+  const tableExportData = useMemo(
+    () => buildTableLayoutFromDraft(tableDraft, svgPreviews, figureLayerData),
+    [tableDraft, svgPreviews, figureLayerData],
+  );
+
+  const handleSaveTableConfiguration = () => {
+    window.localStorage.setItem('foosboard.tableLayout', JSON.stringify(tableExportData));
+    applyTableLayout(tableExportData);
+    resetScene();
+    setConfigDrawerOpened(false);
+  };
+
+  const handleDownloadJson = () => {
+    const filename = `${`${tableDraft.manufacturer}-${tableDraft.name}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'foosboard-table'}.json`;
+    const blob = new Blob([JSON.stringify(tableExportData, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const bottomFigurePreview = getLayerPreview(tableDraft.figureLayerBottom);
+  const bottomFigurePlacement = useMemo(
+    () => getFigurePlacement(bottomFigurePreview, tableDraft.bottomAnchorGroup),
+    [bottomFigurePreview, tableDraft.bottomAnchorGroup],
+  );
+  const bottomFigureBounds = getLayerBounds(tableDraft.figureLayerBottom) ?? bottomFigurePlacement.bounds;
   const ball = useBoardStore((state) => state.ball);
   const rods = useBoardStore((state) => state.rods);
   const shots = useBoardStore((state) => state.shots);
-  const guidesVisible = useBoardStore((state) => state.guidesVisible);
-  const fiveGoalPositions = useBoardStore((state) => state.fiveGoalPositions);
-  const activeShotColor = useBoardStore((state) => state.activeShotColor);
   const snapshots = useBoardStore((state) => state.snapshots);
   const activeTool = useBoardStore((state) => state.activeTool);
+  const activeShotColor = useBoardStore((state) => state.activeShotColor);
   const setBall = useBoardStore((state) => state.setBall);
   const moveRod = useBoardStore((state) => state.moveRod);
   const cycleRodTilt = useBoardStore((state) => state.cycleRodTilt);
   const addShot = useBoardStore((state) => state.addShot);
   const removeShot = useBoardStore((state) => state.removeShot);
   const setActiveTool = useBoardStore((state) => state.setActiveTool);
-  const setActiveShotColor = useBoardStore((state) => state.setActiveShotColor);
-  const toggleGuides = useBoardStore((state) => state.toggleGuides);
-  const toggleFiveGoalPositions = useBoardStore((state) => state.toggleFiveGoalPositions);
   const saveSnapshot = useBoardStore((state) => state.saveSnapshot);
-  const loadSnapshot = useBoardStore((state) => state.loadSnapshot);
-  const deleteSnapshot = useBoardStore((state) => state.deleteSnapshot);
   const resetScene = useBoardStore((state) => state.resetScene);
   const hydrateScene = useBoardStore((state) => state.hydrateScene);
-
-  const figureHits = useMemo(() => buildFigureHits(rods), [rods]);
 
   const fieldBounds = useMemo(
     () => ({
@@ -151,33 +757,7 @@ function App() {
       right: boardConfig.fieldX + boardConfig.fieldWidth,
       bottom: boardConfig.fieldY + boardConfig.fieldHeight,
     }),
-    [],
-  );
-
-  const shotTraces = useMemo(() => shots.map((shot) => ({ shot, trace: traceShot(ball, shot.target, fieldBounds, figureHits) })), [ball, fieldBounds, figureHits, shots]);
-
-  const leftGoalShadows = useMemo(
-    () =>
-      projectGoalShadows(
-        ball,
-        figureHits,
-        boardConfig.fieldX,
-        boardConfig.centerY - boardConfig.goalWidth / 2,
-        boardConfig.centerY + boardConfig.goalWidth / 2,
-      ),
-    [ball, figureHits],
-  );
-
-  const rightGoalShadows = useMemo(
-    () =>
-      projectGoalShadows(
-        ball,
-        figureHits,
-        boardConfig.fieldX + boardConfig.fieldWidth,
-        boardConfig.centerY - boardConfig.goalWidth / 2,
-        boardConfig.centerY + boardConfig.goalWidth / 2,
-      ),
-    [ball, figureHits],
+    [boardConfig.fieldX, boardConfig.fieldY, boardConfig.fieldWidth, boardConfig.fieldHeight],
   );
 
   useEffect(() => {
@@ -245,8 +825,7 @@ function App() {
   }, [fieldBounds, moveRod, setBall]);
 
   const handleBoardPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    const svg = svgRef.current;
-    const point = pointFromEvent(event, svg);
+    const point = pointFromEvent(event, svgRef.current);
 
     if (activeTool === 'move') {
       setBall({
@@ -281,7 +860,7 @@ function App() {
     };
   };
 
-  const startRodDrag = (rodId: RodConfig['id'], event: React.PointerEvent<SVGGElement>) => {
+  const startRodDrag = (rodId: RodConfig['id'], event: React.PointerEvent<SVGElement>) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -299,451 +878,201 @@ function App() {
     };
   };
 
-  const handleShare = async () => {
-    const scene = getSerializableScene(useBoardStore.getState());
-    const hash = sceneToHash(scene);
-    window.location.hash = hash;
-    const url = `${window.location.origin}${window.location.pathname}#${hash}`;
-    setShareLink(url);
-    setCopyState('idle');
-
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopyState('copied');
-      window.setTimeout(() => setCopyState('idle'), 1400);
-    } catch {
-      return;
-    }
-  };
-
   const handleSaveSnapshot = () => {
     saveSnapshot(snapshotName);
     setSnapshotName('');
   };
 
+  const handleShare = () => {
+    const scene = getSerializableScene(useBoardStore.getState());
+    const hash = `scene=${encodeScene(scene)}`;
+    window.location.hash = hash;
+    setShareLink(`${window.location.origin}${window.location.pathname}#${hash}`);
+  };
+
   const goalTop = boardConfig.centerY - boardConfig.goalWidth / 2;
-  const goalMarkerSegments = fiveGoalPositions
-    ? Array.from({ length: 5 }, (_, index) => ({ y: goalTop + index * 18, height: 18 }))
-    : Array.from({ length: 3 }, (_, index) => ({ y: goalTop + index * 30, height: 30 }));
-  const leftGoalColors = fiveGoalPositions
-    ? ['rgba(255, 219, 194, 0.55)', 'rgba(255, 190, 145, 0.5)', 'rgba(255, 160, 104, 0.5)', 'rgba(232, 118, 63, 0.5)', 'rgba(191, 84, 34, 0.55)']
-    : ['rgba(255, 219, 194, 0.55)', 'rgba(255, 160, 104, 0.5)', 'rgba(191, 84, 34, 0.55)'];
-  const rightGoalColors = fiveGoalPositions
-    ? ['rgba(199, 224, 255, 0.55)', 'rgba(163, 202, 247, 0.5)', 'rgba(118, 177, 238, 0.5)', 'rgba(73, 151, 217, 0.5)', 'rgba(37, 104, 162, 0.55)']
-    : ['rgba(199, 224, 255, 0.55)', 'rgba(118, 177, 238, 0.5)', 'rgba(37, 104, 162, 0.55)'];
+  const liveFieldWidthCm = boardConfig.settings?.field.widthCm ?? tableDraft.fieldWidth;
+  const liveRodLengthCm = boardConfig.settings?.configuration.rodLengthCm ?? tableDraft.rodLength;
+  const liveRodDiameterCm = boardConfig.settings?.configuration.rodDiameterCm ?? tableDraft.rodDiameter;
+  const liveGripLengthCm = boardConfig.settings?.configuration.gripLengthCm ?? 7;
+  const liveGripWidthCm = boardConfig.settings?.configuration.gripWidthCm ?? 3;
+  const liveFigureWidthCm = boardConfig.settings?.figures.widthCm ?? tableDraft.figureWidth;
+  const liveRodExtensionRaw = Math.max(((liveRodLengthCm - liveFieldWidthCm) / 2 / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 0);
+  const liveMaxRodExtension = Math.max(
+    Math.min(boardConfig.fieldY - 12, boardConfig.height - (boardConfig.fieldY + boardConfig.fieldHeight) - 12),
+    0,
+  );
+  const liveRodExtension = Math.min(liveRodExtensionRaw, liveMaxRodExtension);
+  const liveGripLength = Math.max((liveGripLengthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 18);
+  const liveGripThickness = Math.max((liveGripWidthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 10);
+  const liveRodStrokeWidth = Math.max((liveRodDiameterCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 4);
+  const liveFieldAssetId = boardConfig.settings?.field.assetId || boardConfig.legacy.sourceAsset;
+  const savedFieldAsset = useMemo(
+    () => (liveFieldAssetId ? normalizeFieldSvgMarkup(boardConfig.assets[liveFieldAssetId] || '') : ''),
+    [liveFieldAssetId, boardConfig.assets],
+  );
+  const figureStates = boardConfig.settings?.figures.states;
+  const liveFigureStates = useMemo(() => {
+    const targetFigureWidth = (liveFigureWidthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight;
+
+    const buildState = (stateKey: FigureStateKey) => {
+      const state = figureStates?.[stateKey];
+      const assetMarkup = state?.assetId ? boardConfig.assets[state.assetId] || '' : '';
+      const layerPreview = assetMarkup && state?.layer ? extractSvgLayerData(assetMarkup)[state.layer]?.preview || '' : '';
+      const markup = layerPreview || (assetMarkup ? normalizeSvgMarkup(assetMarkup, 'xMidYMid meet', true, 0.08, 0) : '');
+      const placement = getFigurePlacement(markup, state?.anchorGroup || '');
+      const scale = targetFigureWidth / Math.max(placement.bounds.width, 1);
+
+      return {
+        markup,
+        bounds: placement.bounds,
+        width: Math.max(targetFigureWidth, 10),
+        height: Math.max(placement.bounds.height * scale, 10),
+        anchor: placement.anchor,
+      };
+    };
+
+    return {
+      unten: buildState('unten'),
+      nachVorn: buildState('nachVorn'),
+      nachHinten: buildState('nachHinten'),
+    };
+  }, [boardConfig.assets, boardConfig.fieldHeight, figureStates, liveFigureWidthCm, liveFieldWidthCm]);
+  const previewFigureMarkup = bottomFigurePreview || liveFigureStates.unten.markup;
+  const previewFigureBounds = bottomFigurePreview ? bottomFigureBounds : liveFigureStates.unten.bounds;
+  const previewFigureAnchor = bottomFigurePreview ? bottomFigurePlacement.anchor : liveFigureStates.unten.anchor;
+  const liveRodHandleWidth = Math.max(liveFigureStates.unten.width * 1.2, liveGripThickness * 4, 40);
+  const liveRodHandleHeight = Math.max(liveFigureStates.unten.height * 1.4, 56);
 
   return (
-    <AppShell header={{ height: 88 }} padding="md" className="foosboard-shell">
-      <AppShell.Header className="foosboard-header">
-        <Group h="100%" justify="space-between" px="lg" wrap="nowrap">
-          <Group gap="sm" wrap="nowrap">
-            <Paper radius="xl" p="xs" bg="var(--panel-bg)">
-              <Shield size={20} />
-            </Paper>
-            <div>
-              <Title order={2} className="foosboard-brand">
-                Foosboard
-              </Title>
-              <Text size="sm" c="dimmed">
-                Refaktorierte Taktiktafel für Tischfußball
-              </Text>
-            </div>
-          </Group>
+    <AppShell padding={0}>
+      <BoardMenu selectedTable={selectedTable} onOpenConfig={() => setConfigDrawerOpened(true)} />
 
-          <Group gap="xs" wrap="wrap" justify="flex-end">
-            <Badge variant="light" color="teal">
-              {activeTool === 'move' ? 'Ball platzieren' : activeTool === 'shot' ? 'Schusslinie' : 'Passlinie'}
-            </Badge>
-            <Badge variant="light" color="gray">
-              {shots.length} Linien
-            </Badge>
-            <Badge variant="light" color="orange">
-              {snapshots.length} Snapshots
-            </Badge>
-          </Group>
-        </Group>
-      </AppShell.Header>
+      <TableConfigForm
+        opened={configDrawerOpened}
+        onClose={() => setConfigDrawerOpened(false)}
+        isMobile={Boolean(isMobile)}
+        configStep={configStep}
+        setConfigStep={setConfigStep}
+        tableDraft={tableDraft}
+        setTableDraft={setTableDraft}
+        updateRowConfig={updateRowConfig}
+        handleSvgDrop={handleSvgDrop}
+        svgPreviews={svgPreviews}
+        hasFieldUpload={hasFieldUpload}
+        fieldPreviewWidth={fieldPreviewWidth}
+        fieldPreviewHeight={fieldPreviewHeight}
+        rodPreviewWidth={rodPreviewWidth}
+        rodPreviewHeight={rodPreviewHeight}
+        previewFieldX={previewFieldX}
+        fieldPreviewY={fieldPreviewY}
+        rodPreviewFieldY={rodPreviewFieldY}
+        previewFieldWidth={previewFieldWidth}
+        previewFieldHeight={previewFieldHeight}
+        rodExtension={rodExtension}
+        frameThickness={frameThickness}
+        gripThickness={gripThickness}
+        gripLength={gripLength}
+        colorSwatches={colorSwatches}
+        figureLayerOptions={figureLayerOptions}
+        getGeometryOptionsForLayer={getGeometryOptionsForLayer}
+        getLayerPreview={getLayerPreview}
+        previewFigureMarkup={previewFigureMarkup}
+        previewFigureBounds={previewFigureBounds}
+        previewFigureAnchor={previewFigureAnchor}
+        onSave={handleSaveTableConfiguration}
+        onDownloadJson={handleDownloadJson}
+      />
 
       <AppShell.Main>
-        <div className="foosboard-layout">
-          <Card className="foosboard-board-card">
-            <Stack gap="sm">
-              <Group justify="space-between" align="flex-end">
-                <div>
-                  <Text fw={600}>Spielfeld</Text>
-                  <Text size="sm" c="dimmed">
-                    Klick setzt den Ball, Linienwerkzeuge erzeugen Taktikpfade.
-                  </Text>
-                </div>
-                <Group gap="xs">
-                  <Badge variant="light" color="green">
-                    Vorlage {boardConfig.width} x {boardConfig.height}
-                  </Badge>
-                  <Badge variant="light" color="blue">
-                    {isCompact ? 'Mobile' : 'Desktop'}
-                  </Badge>
-                </Group>
-              </Group>
+        <main className="foosboard-stage">
+          <BoardCanvas
+            svgRef={svgRef}
+            ball={ball}
+            rods={rods}
+            savedFieldAsset={savedFieldAsset}
+            goalTop={goalTop}
+            liveRodExtension={liveRodExtension}
+            liveGripLength={liveGripLength}
+            liveGripThickness={liveGripThickness}
+            liveRodStrokeWidth={liveRodStrokeWidth}
+            liveRodHandleWidth={liveRodHandleWidth}
+            liveRodHandleHeight={liveRodHandleHeight}
+            liveFigureStates={liveFigureStates}
+            onBoardPointerDown={handleBoardPointerDown}
+            onStartBallDrag={startBallDrag}
+            onStartRodDrag={startRodDrag}
+            onCycleRodTilt={cycleRodTilt}
+          />
 
-              <div className="foosboard-board-wrap">
-                <svg
-                  ref={svgRef}
-                  data-testid="board-svg"
-                  aria-label="Foosboard Spielfeld"
-                  viewBox={`0 0 ${boardConfig.width} ${boardConfig.height}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  onPointerDown={handleBoardPointerDown}
-                  style={{ touchAction: 'none' }}
-                >
-                  <defs>
-                    <filter id="shadow">
-                      <feDropShadow dx="0" dy="10" stdDeviation="12" floodColor="rgba(12, 28, 24, 0.25)" />
-                    </filter>
-                    <marker id="arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#14342d" />
-                    </marker>
-                  </defs>
+      <section className="foosboard-hidden-ui" aria-label="Foosboard Steuerung">
+        <h1>Foosboard</h1>
+        <p>Refaktorierte Taktiktafel für Tischfußball</p>
+        <p>Vorlage {boardConfig.width} x {boardConfig.height}</p>
 
-                  <rect width={boardConfig.width} height={boardConfig.height} fill={boardConfig.colors.pageBg} />
-                  <rect x={boardConfig.fieldX} y={boardConfig.fieldY} width={boardConfig.fieldWidth} height={boardConfig.fieldHeight} fill={boardConfig.colors.boardInner} />
-                  <rect x={boardConfig.frameX} y={boardConfig.frameY} width={boardConfig.frameWidth} height={boardConfig.frameHeight} fill="none" stroke="#111" strokeWidth={5} />
-
-                  <g fill="none" stroke={boardConfig.colors.fieldLine} strokeWidth={2}>
-                    <path d={`M ${boardConfig.fieldX} ${boardConfig.fieldY + 65} H ${boardConfig.fieldX + 130} V ${boardConfig.fieldY + 255} H ${boardConfig.fieldX}`} />
-                    <path d={`M ${boardConfig.fieldX} ${boardConfig.fieldY + 90} H ${boardConfig.fieldX + 70} V ${boardConfig.fieldY + 230} H ${boardConfig.fieldX}`} />
-                    <line x1={boardConfig.centerX} y1={boardConfig.fieldY} x2={boardConfig.centerX} y2={boardConfig.fieldY + boardConfig.fieldHeight} />
-                    <path d={`M ${boardConfig.fieldX + boardConfig.fieldWidth} ${boardConfig.fieldY + 65} H ${boardConfig.fieldX + boardConfig.fieldWidth - 130} V ${boardConfig.fieldY + 255} H ${boardConfig.fieldX + boardConfig.fieldWidth}`} />
-                    <path d={`M ${boardConfig.fieldX + boardConfig.fieldWidth} ${boardConfig.fieldY + 230} H ${boardConfig.fieldX + boardConfig.fieldWidth - 70} V ${boardConfig.fieldY + 90} H ${boardConfig.fieldX + boardConfig.fieldWidth}`} />
-                    <path d={`M ${boardConfig.fieldX + 130} ${boardConfig.fieldY + 125} C ${boardConfig.fieldX + 160} ${boardConfig.fieldY + 135} ${boardConfig.fieldX + 160} ${boardConfig.fieldY + 185} ${boardConfig.fieldX + 130} ${boardConfig.fieldY + 195}`} />
-                    <path d={`M ${boardConfig.fieldX + boardConfig.fieldWidth - 130} ${boardConfig.fieldY + 195} C ${boardConfig.fieldX + boardConfig.fieldWidth - 160} ${boardConfig.fieldY + 185} ${boardConfig.fieldX + boardConfig.fieldWidth - 160} ${boardConfig.fieldY + 135} ${boardConfig.fieldX + boardConfig.fieldWidth - 130} ${boardConfig.fieldY + 125}`} />
-                    <circle cx={boardConfig.centerX} cy={boardConfig.centerY} r={boardConfig.centerCircleRadius} />
-                    <circle cx={boardConfig.centerX} cy={boardConfig.centerY} r={3} fill={boardConfig.colors.fieldLine} />
-                  </g>
-
-                  <g>
-                    <rect x={boardConfig.fieldX - boardConfig.goalDepth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
-                    <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
-                  </g>
-
-                  <g opacity={0.5}>
-                    {leftGoalShadows.map((shadow, index) => (
-                      <rect
-                        key={`left-shadow-${shadow.rodId}-${index}`}
-                        x={boardConfig.fieldX - boardConfig.goalDepth + 0.8}
-                        y={shadow.start}
-                        width={Math.max(2, boardConfig.goalDepth - 1.6)}
-                        height={Math.max(4, shadow.end - shadow.start)}
-                        fill="#df6f3d"
-                      />
-                    ))}
-                    {rightGoalShadows.map((shadow, index) => (
-                      <rect
-                        key={`right-shadow-${shadow.rodId}-${index}`}
-                        x={boardConfig.fieldX + boardConfig.fieldWidth + 0.8}
-                        y={shadow.start}
-                        width={Math.max(2, boardConfig.goalDepth - 1.6)}
-                        height={Math.max(4, shadow.end - shadow.start)}
-                        fill="#4a97d9"
-                      />
-                    ))}
-                  </g>
-
-                  <g opacity={0.72}>
-                    {goalMarkerSegments.map((segment, index) => (
-                      <g key={`${segment.y}-${segment.height}`}>
-                        <rect x={boardConfig.fieldX - 16.7} y={segment.y} width={16.5} height={segment.height} fill={leftGoalColors[index]} stroke="rgba(0,0,0,0.65)" strokeWidth={0.55} />
-                        <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={segment.y} width={16.9} height={segment.height} fill={rightGoalColors[index]} stroke="rgba(0,0,0,0.65)" strokeWidth={0.55} />
-                      </g>
-                    ))}
-                  </g>
-
-                  {guidesVisible && (
-                    <g opacity={0.45}>
-                      {legacyGuideYs.map((guideY) => (
-                        <line
-                          key={guideY}
-                          x1={boardConfig.fieldX}
-                          y1={guideY}
-                          x2={boardConfig.fieldX + boardConfig.fieldWidth}
-                          y2={guideY}
-                          stroke={boardConfig.colors.guide}
-                          strokeWidth={1}
-                          strokeDasharray="2 4"
-                        />
-                      ))}
-                    </g>
-                  )}
-
-                  {shotTraces.map(({ shot, trace }) => {
-                    const points = trace.segments.map((segment) => [segment.start, segment.end]).flat();
-                    const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
-                    const strokeWidth = shot.kind === 'pass' ? 4 : 5;
-                    const strokeOpacity = trace.blocker ? 0.65 : 0.95;
-                    const isPass = shot.kind === 'pass';
-
-                    return (
-                      <g key={shot.id}>
-                        <polyline
-                          points={polylinePoints}
-                          fill="none"
-                          stroke={shot.color}
-                          strokeWidth={strokeWidth + 5}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          opacity={0.16}
-                        />
-                        <polyline
-                          points={polylinePoints}
-                          fill="none"
-                          stroke={shot.color}
-                          strokeWidth={strokeWidth}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeDasharray={isPass ? '10 8' : 'none'}
-                          strokeOpacity={strokeOpacity}
-                          markerEnd={trace.blocker ? undefined : 'url(#arrow-head)'}
-                        />
-                        {trace.blocker && (
-                          <circle cx={trace.blocker.center.x} cy={trace.blocker.center.y} r={trace.blocker.radius + 4} fill={shot.color} opacity={0.22} />
-                        )}
-                      </g>
-                    );
-                  })}
-
-                  {boardConfig.rods.map((rod) => {
-                    const rodState = rods[rod.id];
-                    const offsets = getRodOffsets(rod);
-
-                    return (
-                      <g key={rod.id} data-testid={`rod-${rod.id}`} transform={`translate(${rod.x},0)`}>
-                        <rect x={-2.5} y={38.35} width={5} height={390} fill={rod.rodColor} stroke="rgba(0,0,0,0.58)" strokeWidth={0.95} />
-                        <rect x={-7.5} y={14.39} width={15} height={40} fill="#111" rx={1.5} />
-                        <rect x={-7.5} y={412.24} width={15} height={40} fill="#111" rx={1.5} />
-
-                        <rect
-                          x={-34.95}
-                          y={rodState.y - 28.89}
-                          width={69.9}
-                          height={57.78}
-                          fill="rgba(255,255,255,0.04)"
-                          stroke="rgba(255,255,255,0.35)"
-                          strokeWidth={1}
-                          strokeDasharray="2 3"
-                          onPointerDown={(event) => startRodDrag(rod.id, event)}
-                          cursor="ns-resize"
-                        />
-
-                        <g transform={`translate(0 ${rodState.y})`}>
-                          {offsets.map((offset, index) => (
-                            <g key={`${rod.id}-${index}`}>
-                              {renderLegacyFigure(rod, rodState.tilt, offset, (event) => {
-                                event.stopPropagation();
-                                cycleRodTilt(rod.id);
-                              })}
-                            </g>
-                          ))}
-                        </g>
-                      </g>
-                    );
-                  })}
-
-                  <g>
-                    <circle
-                      data-testid="ball-token"
-                      cx={ball.x}
-                      cy={ball.y}
-                      r={boardConfig.ballRadius}
-                      fill="#fdfcf8"
-                      stroke="#1f332d"
-                      strokeWidth={2}
-                      onPointerDown={startBallDrag}
-                      cursor="grab"
-                      filter="url(#shadow)"
-                    />
-                    <circle cx={ball.x - 2.4} cy={ball.y - 2.8} r={2.1} fill="rgba(255,255,255,0.95)" />
-                  </g>
-                </svg>
-              </div>
-            </Stack>
-          </Card>
-
-          <Stack className="foosboard-sidebar" gap="md">
-            <Card className="foosboard-panel">
-              <Stack gap="md">
-                <div>
-                  <Text fw={600}>Werkzeuge</Text>
-                  <Text size="sm" c="dimmed">
-                    Wähle Ballbewegung oder Linienwerkzeuge für Schuss und Pass.
-                  </Text>
-                </div>
-
-                <SegmentedControl
-                  data={[
-                    { label: 'Ball', value: 'move' },
-                    { label: 'Schuss', value: 'shot' },
-                    { label: 'Pass', value: 'pass' },
-                  ]}
-                  value={activeTool}
-                  onChange={(value) => setActiveTool(value as typeof activeTool)}
-                />
-
-                <SegmentedControl
-                  data={colorChoices.map((choice) => ({ value: choice.value, label: choice.label }))}
-                  value={activeShotColor}
-                  onChange={(value) => setActiveShotColor(value)}
-                />
-
-                <Group grow>
-                  <Button leftSection={<Eye size={16} />} variant={guidesVisible ? 'filled' : 'light'} onClick={toggleGuides}>
-                    {guidesVisible ? 'Hilfslinien an' : 'Hilfslinien aus'}
-                  </Button>
-                  <Button leftSection={<Layers3 size={16} />} variant={fiveGoalPositions ? 'filled' : 'light'} onClick={toggleFiveGoalPositions}>
-                    {fiveGoalPositions ? '5 Zielpunkte' : '3 Zielpunkte'}
-                  </Button>
-                </Group>
-
-                <Group grow>
-                  <Button leftSection={<RotateCcw size={16} />} variant="light" onClick={resetScene}>
-                    Reset
-                  </Button>
-                  <Button leftSection={<Sparkles size={16} />} variant="light" onClick={handleShare}>
-                    Teilen
-                  </Button>
-                </Group>
-
-                <Group align="flex-end" grow>
-                  <TextInput
-                    label="Snapshot-Name"
-                    placeholder="z. B. Standardpresse"
-                    value={snapshotName}
-                    onChange={(event) => setSnapshotName(event.currentTarget.value)}
-                  />
-                  <Button leftSection={<Save size={16} />} onClick={handleSaveSnapshot}>
-                    Speichern
-                  </Button>
-                </Group>
-
-                <TextInput
-                  label="Share-Link"
-                  value={shareLink}
-                  placeholder="Link wird hier erzeugt"
-                  readOnly
-                  rightSection={
-                    <ActionIcon variant="subtle" aria-label="Kopieren" onClick={handleShare}>
-                      <Copy size={16} />
-                    </ActionIcon>
-                  }
-                />
-
-                <Text size="sm" c={copyState === 'copied' ? 'teal' : 'dimmed'}>
-                  {copyState === 'copied' ? 'Link in die Zwischenablage kopiert.' : `Der Link basiert auf ${boardConfig.legacy.sourceAsset} und wird als Base64-Hash gespeichert.`}
-                </Text>
-              </Stack>
-            </Card>
-
-            <Card className="foosboard-panel">
-              <Stack gap="sm">
-                <Group justify="space-between" align="center">
-                  <div>
-                    <Text fw={600}>Stellungen</Text>
-                    <Text size="sm" c="dimmed">
-                      Gespeicherte Szenen im LocalStorage.
-                    </Text>
-                  </div>
-                  <Badge variant="light">{snapshots.length}</Badge>
-                </Group>
-
-                <Divider />
-
-                <Stack className="foosboard-saved-list">
-                  {snapshots.length === 0 ? (
-                    <Text size="sm" c="dimmed">
-                      Noch keine Snapshots gespeichert.
-                    </Text>
-                  ) : (
-                    snapshots.map((snapshot) => (
-                      <Paper key={snapshot.id} withBorder p="sm" radius="lg" bg="rgba(255,255,255,0.5)">
-                        <Group justify="space-between" align="center">
-                          <div>
-                            <Text fw={600}>{snapshot.name}</Text>
-                            <Text size="xs" c="dimmed">
-                              {new Date(snapshot.createdAt).toLocaleString('de-DE')}
-                            </Text>
-                          </div>
-                          <Group gap={6}>
-                            <ActionIcon variant="light" aria-label="Laden" onClick={() => loadSnapshot(snapshot.id)}>
-                              <Play size={15} />
-                            </ActionIcon>
-                            <ActionIcon variant="light" aria-label="Löschen" onClick={() => deleteSnapshot(snapshot.id)}>
-                              <Trash2 size={15} />
-                            </ActionIcon>
-                          </Group>
-                        </Group>
-                      </Paper>
-                    ))
-                  )}
-                </Stack>
-              </Stack>
-            </Card>
-
-            <Card className="foosboard-panel">
-              <Stack gap="xs">
-                <Text fw={600}>Aktueller Zustand</Text>
-                <Text size="sm" c="dimmed">
-                  Ball und Rods aus dem neuen Zustandssystem.
-                </Text>
-                <Group gap="xs" wrap="wrap">
-                  <Badge variant="light" color="teal">
-                    Ball {Math.round(ball.x)} / {Math.round(ball.y)}
-                  </Badge>
-                  <Badge variant="light" color="blue">
-                    Linien {shots.length}
-                  </Badge>
-                  <Badge variant="light" color="orange">
-                    Hilfen {guidesVisible ? 'an' : 'aus'}
-                  </Badge>
-                </Group>
-                <Divider my="xs" />
-                {boardConfig.rods.slice(0, 6).map((rod) => (
-                  <Group key={rod.id} justify="space-between" align="center" wrap="nowrap">
-                    <div>
-                      <Text size="sm">{rod.label}</Text>
-                      <Text size="xs" c="dimmed" className="foosboard-mono">
-                        {Math.round(rods[rod.id].y)} mm · {rods[rod.id].tilt}
-                      </Text>
-                    </div>
-                    <Button size="xs" variant="light" onClick={() => cycleRodTilt(rod.id)}>
-                      Kippen
-                    </Button>
-                  </Group>
-                ))}
-              </Stack>
-            </Card>
-
-            <Card className="foosboard-panel">
-              <Stack gap="xs">
-                <Text fw={600}>Linienverwaltung</Text>
-                {shots.length === 0 ? (
-                  <Text size="sm" c="dimmed">
-                    Noch keine Schuss- oder Passlinien angelegt.
-                  </Text>
-                ) : (
-                  shots.map((shot) => (
-                    <Group key={shot.id} justify="space-between" wrap="nowrap">
-                      <Group gap={8} wrap="nowrap">
-                        <div style={{ width: 14, height: 14, borderRadius: 999, background: shot.color }} />
-                        <Text size="sm">{shot.label}</Text>
-                      </Group>
-                      <ActionIcon variant="light" aria-label="Linie löschen" onClick={() => removeShot(shot.id)}>
-                        <Ban size={15} />
-                      </ActionIcon>
-                    </Group>
-                  ))
-                )}
-              </Stack>
-            </Card>
-          </Stack>
+        <div>
+          <button type="button" onClick={() => setActiveTool('move')}>
+            Ball
+          </button>
+          <button type="button" onClick={() => setActiveTool('shot')}>
+            Schuss
+          </button>
+          <button type="button" onClick={() => setActiveTool('pass')}>
+            Pass
+          </button>
         </div>
+
+        <div>
+          <label htmlFor="snapshot-name">Snapshot-Name</label>
+          <input
+            id="snapshot-name"
+            aria-label="Snapshot-Name"
+            value={snapshotName}
+            onChange={(event) => setSnapshotName(event.currentTarget.value)}
+          />
+          <button type="button" onClick={handleSaveSnapshot}>
+            Speichern
+          </button>
+        </div>
+
+        <div>
+          <button type="button" onClick={handleShare}>
+            Teilen
+          </button>
+          <label htmlFor="share-link">Share-Link</label>
+          <input id="share-link" aria-label="Share-Link" readOnly value={shareLink} />
+        </div>
+
+        <div>
+          {boardConfig.rods.slice(0, 6).map((rod) => (
+            <div key={rod.id}>
+              <span>{rod.label}</span>
+              <span>{rods[rod.id].tilt}</span>
+              <button type="button" onClick={() => cycleRodTilt(rod.id)}>
+                Kippen
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          {snapshots.map((snapshot) => (
+            <div key={snapshot.id}>{snapshot.name}</div>
+          ))}
+        </div>
+
+        <div>
+          {shots.map((shot) => (
+            <div key={shot.id}>
+              <span>{shot.label}</span>
+              <button type="button" aria-label="Linie löschen" onClick={() => removeShot(shot.id)}>
+                Löschen
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+        </main>
       </AppShell.Main>
     </AppShell>
   );

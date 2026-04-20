@@ -75,6 +75,49 @@ describe('app regression coverage', () => {
     });
   });
 
+  it('preserves the preview aspect ratio and opens the configuration wizard', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByLabelText('Tischauswahl öffnen'));
+    await user.click(screen.getByText('Tische konfigurieren'));
+
+    expect(await screen.findByText(/Tischkonfiguration/i)).toBeInTheDocument();
+
+    const fieldCanvas = await screen.findByTestId('field-preview-canvas');
+    const fieldWindow = await screen.findByTestId('field-preview-window');
+    expect(fieldCanvas).toBeInTheDocument();
+    expect(fieldWindow).toBeInTheDocument();
+    expect((fieldCanvas as HTMLElement).style.aspectRatio).toContain('/');
+    expect(parseFloat((fieldWindow as HTMLElement).style.width)).toBeCloseTo(85.71428571428571, 3);
+    expect(parseFloat((fieldWindow as HTMLElement).style.height)).toBeCloseTo(77.27272727272727, 3);
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hersteller')).toBeInTheDocument();
+    expect(screen.getByLabelText('Spielfeldlänge (innen)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Spielfeldbreite (innen)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Stangenlänge')).toBeInTheDocument();
+    expect(screen.getByLabelText('Stangendurchmesser')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /weiter/i }));
+
+    expect(screen.getAllByLabelText('Position').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Stangenvorschau')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /weiter/i }));
+
+    expect(screen.getByText('Upload Figuren-SVG')).toBeInTheDocument();
+    expect(screen.getAllByText('unten').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('nach vorn').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('nach hinten').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Verbindungsgruppe').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByLabelText('Kollisionsgruppe').length).toBeGreaterThanOrEqual(3);
+    expect((screen.getByLabelText('Breite der Puppe') as HTMLInputElement).value).toContain('3.5');
+    expect(screen.getByLabelText('Ballgröße')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ballfarbe')).toBeInTheDocument();
+    expect(screen.getByTestId('figure-rod-preview-canvas')).toBeInTheDocument();
+    expect(screen.queryByText('Puppe mit Stange')).not.toBeInTheDocument();
+  });
+
   it('saves a snapshot, toggles rod tilt and generates a share hash', async () => {
     const user = userEvent.setup();
     renderApp();
