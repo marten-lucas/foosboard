@@ -1,5 +1,7 @@
 import type { RefObject } from 'react';
 import { boardConfig, type BallState, type RodConfig, type RodState } from '../boardConfig';
+import { SharedVisualDefs } from './SharedVisualDefs';
+import { buildCenteredOffsets } from '../lib/rowFigureLayout';
 
 type FigureStateKey = 'unten' | 'nachVorn' | 'nachHinten';
 
@@ -49,8 +51,7 @@ function getRodOffsets(rod: RodConfig): number[] {
     return rod.figureOffsets;
   }
 
-  const centerYOffset = (rod.playerCount - 1) * boardConfig.figureSpacing * 0.5;
-  return Array.from({ length: rod.playerCount }, (_, index) => index * boardConfig.figureSpacing - centerYOffset);
+  return buildCenteredOffsets(rod.playerCount, boardConfig.figureSpacing);
 }
 
 export function BoardCanvas({
@@ -82,11 +83,11 @@ export function BoardCanvas({
         preserveAspectRatio="xMidYMid meet"
         onPointerDown={onBoardPointerDown}
         style={{ touchAction: 'none' }}
+        data-field-height={boardConfig.fieldHeight}
+        data-rod-extension={liveRodExtension}
       >
         <defs>
-          <filter id="shadow">
-            <feDropShadow dx="0" dy="10" stdDeviation="12" floodColor="rgba(12, 28, 24, 0.25)" />
-          </filter>
+          <SharedVisualDefs />
         </defs>
 
         <rect width={boardConfig.width} height={boardConfig.height} fill={boardConfig.colors.pageBg} />
@@ -96,8 +97,6 @@ export function BoardCanvas({
             <div className="foosboard-live-field-asset" dangerouslySetInnerHTML={{ __html: savedFieldAsset }} />
           </foreignObject>
         ) : null}
-        <rect x={boardConfig.frameX} y={boardConfig.frameY} width={boardConfig.frameWidth} height={boardConfig.frameHeight} fill="none" stroke="#111" strokeWidth={5} />
-
         <g>
           <rect x={boardConfig.fieldX - boardConfig.goalDepth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
           <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
@@ -106,25 +105,28 @@ export function BoardCanvas({
         {boardConfig.rods.map((rod) => {
           const rodState = rods[rod.id];
           const offsets = getRodOffsets(rod);
+          const rodTop = rod.team === 'orange' ? boardConfig.fieldY : boardConfig.fieldY - liveRodExtension;
+          const rodBottom = rod.team === 'orange' ? boardConfig.fieldY + boardConfig.fieldHeight + liveRodExtension : boardConfig.fieldY + boardConfig.fieldHeight;
 
           return (
             <g key={rod.id} data-testid={`rod-${rod.id}`} transform={`translate(${rod.x},0)`}>
-              <line
-                x1={0}
-                y1={rod.team === 'orange' ? boardConfig.fieldY : boardConfig.fieldY - liveRodExtension}
-                x2={0}
-                y2={rod.team === 'orange' ? boardConfig.fieldY + boardConfig.fieldHeight + liveRodExtension : boardConfig.fieldY + boardConfig.fieldHeight}
-                stroke="#444"
-                strokeWidth={liveRodStrokeWidth}
+              {/* Stange als Rect mit zylindrischem Gradient */}
+              <rect
+                x={-liveRodStrokeWidth / 2}
+                y={rodTop}
+                width={liveRodStrokeWidth}
+                height={rodBottom - rodTop}
+                fill="url(#rodGradient)"
               />
+              {/* Griff */}
               <rect
                 x={-liveGripThickness / 2}
-                y={rod.team === 'orange' ? boardConfig.fieldY + boardConfig.fieldHeight + liveRodExtension - Math.min(liveRodExtension, liveGripLength) : boardConfig.fieldY - liveRodExtension}
+                y={rod.team === 'orange' ? rodBottom - Math.min(liveRodExtension, liveGripLength) : rodTop}
                 width={liveGripThickness}
                 height={Math.min(liveRodExtension, liveGripLength)}
                 rx={liveGripThickness / 4}
-                fill="#111"
-                stroke="rgba(0,0,0,0.35)"
+                fill="url(#gripGradient)"
+                stroke="rgba(0,0,0,0.25)"
                 strokeWidth="0.4"
               />
               <rect
@@ -174,20 +176,39 @@ export function BoardCanvas({
           );
         })}
 
+        {/* Rahmen liegt bewusst über den Stangen */}
+        <rect
+          x={boardConfig.frameX}
+          y={boardConfig.frameY}
+          width={boardConfig.frameWidth}
+          height={boardConfig.frameHeight}
+          fill="none"
+          stroke="#111"
+          strokeWidth={5}
+          style={{ pointerEvents: 'none' }}
+        />
+
         <g>
+          {/* Ball – sphärischer Lichteffekt */}
           <circle
             data-testid="ball-token"
             cx={ball.x}
             cy={ball.y}
             r={boardConfig.ballRadius}
-            fill="#fdfcf8"
-            stroke="#1f332d"
-            strokeWidth={2}
+            fill="url(#ballGradient)"
+            stroke="rgba(60,60,60,0.45)"
+            strokeWidth={1.5}
             onPointerDown={onStartBallDrag}
             cursor="grab"
-            filter="url(#shadow)"
           />
-          <circle cx={ball.x - 2.4} cy={ball.y - 2.8} r={2.1} fill="rgba(255,255,255,0.95)" />
+          {/* Spekulares Highlight */}
+          <circle
+            cx={ball.x - boardConfig.ballRadius * 0.27}
+            cy={ball.y - boardConfig.ballRadius * 0.29}
+            r={boardConfig.ballRadius * 0.22}
+            fill="rgba(255,255,255,0.82)"
+            style={{ pointerEvents: 'none' }}
+          />
         </g>
       </svg>
     </div>

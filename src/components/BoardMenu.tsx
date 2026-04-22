@@ -1,5 +1,5 @@
 import { ActionIcon, Menu } from '@mantine/core';
-import { Check, Settings2, TableProperties } from 'lucide-react';
+import { Check, Pencil, Settings2, TableProperties } from 'lucide-react';
 
 type BoardMenuProps = {
   selectedTable: string;
@@ -18,7 +18,11 @@ export function BoardMenu({ selectedTable, onOpenConfig }: BoardMenuProps) {
 
         <Menu.Dropdown>
           <Menu.Label>Tisch auswählen</Menu.Label>
-          <Menu.Item leftSection={<Check size={14} />}>
+          <Menu.Item
+            leftSection={<Check size={14} />}
+            rightSection={<span title={`Tisch ${selectedTable} bearbeiten`}><Pencil size={14} /></span>}
+            onClick={onOpenConfig}
+          >
             {selectedTable}
           </Menu.Item>
           <Menu.Divider />

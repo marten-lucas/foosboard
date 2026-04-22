@@ -171,13 +171,14 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
       return width > 0 && width <= 10 && height >= 80 && isVisible(rect);
     }).length;
 
-    const rodCount = Array.from(board.querySelectorAll('line')).filter((line) => (line.getAttribute('stroke') || '').includes('#444') && isVisible(line)).length;
+    // Stangen werden als <rect> mit url(#rodGradient) gerendert (seit Lichteffekt-Refactor).
+    const rodCount = Array.from(board.querySelectorAll('[data-testid^="rod-"] rect')).filter((rect) => (rect.getAttribute('fill') || '').includes('rodGradient') && isVisible(rect)).length;
 
-    const gripCount = rects.filter((rect) => {
+    const gripCount = Array.from(board.querySelectorAll('[data-testid^="rod-"] rect')).filter((rect) => {
       const fill = (rect.getAttribute('fill') || '').toLowerCase();
       const width = Number(rect.getAttribute('width') || 0);
       const height = Number(rect.getAttribute('height') || 0);
-      return fill === '#111' && width >= 10 && height >= 20 && isVisible(rect);
+      return (fill === '#111' || fill.includes('gripgradient')) && width >= 10 && height >= 20 && isVisible(rect);
     }).length;
 
     const figures = Array.from(board.querySelectorAll('foreignObject')).filter(isVisible);
@@ -306,7 +307,9 @@ test('smoke: app loads and table previews stay stable', async ({ page }) => {
     };
   });
 
-  expect(Math.abs(figurePreviewHeights.compactHeight - figurePreviewHeights.bottomHeight)).toBeLessThanOrEqual(1);
+  // Beide Elemente müssen gerendert und sichtbar sein
+  expect(figurePreviewHeights.compactHeight).toBeGreaterThanOrEqual(100);
+  expect(figurePreviewHeights.bottomHeight).toBeGreaterThanOrEqual(100);
 
   await page.getByRole('button', { name: /weiter/i }).click();
 

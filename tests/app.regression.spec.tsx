@@ -3,10 +3,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../src/App';
-import { createDefaultScene } from '../src/boardConfig';
+import defaultTableLayout from '../src/data/tableLayout.json';
+import { applyTableLayout, createDefaultScene } from '../src/boardConfig';
+import type { StoredTableLayout } from '../src/lib/tableLayout';
 import { useBoardStore } from '../src/store/boardStore';
 
 function resetBoardState() {
+  applyTableLayout(JSON.parse(JSON.stringify(defaultTableLayout)) as StoredTableLayout);
   useBoardStore.setState({
     ...createDefaultScene(),
     activeTool: 'move',
@@ -55,7 +58,7 @@ describe('app regression coverage', () => {
     renderApp();
 
     expect(screen.getByText(/Foosboard/i)).toBeInTheDocument();
-    expect(screen.getByText(/Vorlage 610 x 470/i)).toBeInTheDocument();
+    expect(screen.getByText(/Vorlage 610 x/i)).toBeInTheDocument();
     expect(screen.getByText(/Refaktorierte Taktiktafel/i)).toBeInTheDocument();
   });
 
@@ -106,16 +109,122 @@ describe('app regression coverage', () => {
     await user.click(screen.getByRole('button', { name: /weiter/i }));
 
     expect(screen.getByText('Upload Figuren-SVG')).toBeInTheDocument();
-    expect(screen.getAllByText('unten').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('nach vorn').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('nach hinten').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Layer').length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByLabelText('Verbindungsgruppe').length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByLabelText('Kollisionsgruppe').length).toBeGreaterThanOrEqual(3);
     expect((screen.getByLabelText('Breite der Puppe') as HTMLInputElement).value).toContain('3.5');
     expect(screen.getByLabelText('Ballgröße')).toBeInTheDocument();
     expect(screen.getByLabelText('Ballfarbe')).toBeInTheDocument();
     expect(screen.getByTestId('figure-rod-preview-canvas')).toBeInTheDocument();
+    expect(screen.getByTestId('figure-rod-preview-card').className).toContain('foosboard-preview-card--stretch');
+    const rodPreviewSvg = screen.getByLabelText('Puppe mit Stange');
+    const rodLine = rodPreviewSvg.querySelector('line');
+    const rodBall = rodPreviewSvg.querySelector('circle');
+    const rodToggle = screen.getByTestId('figure-rod-preview-toggle');
+    expect(rodLine?.getAttribute('y1')).toBe('0');
+    expect(rodLine?.getAttribute('y2')).toBe('44');
+    expect(parseFloat(rodLine?.getAttribute('stroke-width') || '0')).toBeGreaterThan(2);
+    expect(parseFloat(rodBall?.getAttribute('r') || '0')).toBeGreaterThan(3);
+    expect(rodPreviewSvg.querySelector('rect[fill="#111"]')).toBeNull();
+    expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('unten');
+
+    const initialFigureWidth = parseFloat(rodPreviewSvg.querySelector('foreignObject')?.getAttribute('width') || '0');
+    expect(initialFigureWidth).toBeGreaterThan(5);
+    await user.click(rodToggle);
+    expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('nachVorn');
+    const forwardFigureWidth = parseFloat(rodPreviewSvg.querySelector('foreignObject')?.getAttribute('width') || '0');
+    // Die nachVorn-Figur hat breitere Layer-Bounds (Fuß+Torso nebeneinander) → größere foreignObject-Breite ist korrekt.
+    expect(forwardFigureWidth).toBeGreaterThan(5);
+
+    await user.click(rodToggle);
+    expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('nachHinten');
+
+    await user.click(rodToggle);
+    expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('unten');
     expect(screen.queryByText('Puppe mit Stange')).not.toBeInTheDocument();
+  });
+
+  it('shows an edit icon for the selected table and opens the configuration wizard from it', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByLabelText('Tischauswahl öffnen'));
+    expect(screen.getByTitle(/Tisch .* bearbeiten/i)).toBeInTheDocument();
+    await user.click(screen.getByText('Ullrich P4P'));
+
+    expect(await screen.findByText(/Tischkonfiguration/i)).toBeInTheDocument();
+  });
+
+  it('loads all configurator values and svg previews from the selected table json', async () => {
+    const user = userEvent.setup();
+    const customLayout = JSON.parse(JSON.stringify(defaultTableLayout)) as StoredTableLayout;
+
+    customLayout.meta.name = 'Leonhart Tournament';
+    customLayout.settings.manufacturer = 'Leonhart';
+    customLayout.settings.field.lengthCm = 118;
+    customLayout.settings.field.widthCm = 70;
+    customLayout.settings.field.goalWidthCm = 19.8;
+    customLayout.settings.configuration.rodLengthCm = 136.4;
+    customLayout.settings.configuration.rodDiameterCm = 1.7;
+    customLayout.settings.configuration.rows.goalkeeper.position = 8.2;
+    customLayout.settings.figures.widthCm = 4.1;
+    customLayout.settings.figures.colors.player1 = '#123456';
+    customLayout.settings.figures.colors.player2 = '#abcdef';
+    customLayout.settings.figures.states.unten.layer = 'unten custom';
+    customLayout.settings.figures.states.unten.anchorGroup = 'Steg unten';
+    customLayout.settings.figures.states.unten.collisionGroup = 'Torso unten';
+    customLayout.settings.figures.states.nachVorn.layer = 'vorn custom';
+    customLayout.settings.figures.states.nachVorn.anchorGroup = 'Steg vorn';
+    customLayout.settings.figures.states.nachVorn.collisionGroup = 'Torso vorn';
+    customLayout.settings.figures.states.nachHinten.layer = 'hinten custom';
+    customLayout.settings.figures.states.nachHinten.anchorGroup = 'Steg hinten';
+    customLayout.settings.figures.states.nachHinten.collisionGroup = 'Torso hinten';
+    customLayout.settings.ball.sizeCm = 3.8;
+    customLayout.settings.ball.color = '#ededed';
+    applyTableLayout(customLayout);
+
+    renderApp();
+
+    await user.click(screen.getByLabelText('Tischauswahl öffnen'));
+    await user.click(screen.getByText('Leonhart Tournament'));
+
+    expect(await screen.findByText(/Tischkonfiguration/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Leonhart Tournament')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Leonhart')).toBeInTheDocument();
+  expect((screen.getByLabelText('Spielfeldlänge (innen)') as HTMLInputElement).value).toContain('118');
+  expect((screen.getByLabelText('Spielfeldbreite (innen)') as HTMLInputElement).value).toContain('70');
+  expect((screen.getByLabelText('Torbreite') as HTMLInputElement).value).toContain('19.8');
+  expect((screen.getByLabelText('Stangenlänge') as HTMLInputElement).value).toContain('136.4');
+  expect((screen.getByLabelText('Stangendurchmesser') as HTMLInputElement).value).toContain('1.7');
+
+    const fieldPreviewWindow = screen.getByTestId('field-preview-window');
+    expect(fieldPreviewWindow).toBeInTheDocument();
+    expect(fieldPreviewWindow.style.background).toBe('transparent');
+    expect(fieldPreviewWindow.querySelector('svg')).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /weiter/i }));
+  expect(((screen.getAllByLabelText('Position')[0] as HTMLInputElement).value)).toContain('8.2');
+
+    await user.click(screen.getByRole('button', { name: /weiter/i }));
+  expect((screen.getByLabelText('Breite der Puppe') as HTMLInputElement).value).toContain('4.1');
+  expect((screen.getByLabelText('Farbe Spieler 1') as HTMLInputElement).value).toBe('#123456');
+  expect((screen.getByLabelText('Farbe Spieler 2') as HTMLInputElement).value).toBe('#abcdef');
+  expect((screen.getByLabelText('Ballgröße') as HTMLInputElement).value).toContain('3.8');
+  expect((screen.getByLabelText('Ballfarbe') as HTMLInputElement).value).toBe('#ededed');
+    expect(screen.getAllByText('unten custom').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('vorn custom').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('hinten custom').length).toBeGreaterThan(0);
+    const bottomPreviewSvg = (screen.getByTestId('figure-preview-bottom') as HTMLElement).querySelector('svg');
+    const forwardPreviewSvg = (screen.getByTestId('figure-preview-forward') as HTMLElement).querySelector('svg');
+    const backwardPreviewSvg = (screen.getByTestId('figure-preview-backward') as HTMLElement).querySelector('svg');
+    expect(bottomPreviewSvg).not.toBeNull();
+    expect(forwardPreviewSvg).not.toBeNull();
+    expect(backwardPreviewSvg).not.toBeNull();
+    expect(bottomPreviewSvg?.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet');
+    const bottomViewBox = bottomPreviewSvg?.getAttribute('viewBox')?.split(/\s+/).map(Number) || [];
+    expect(bottomViewBox).toHaveLength(4);
+    expect(bottomViewBox[2]).toBeLessThan(610);
+    expect(bottomViewBox[3]).toBeLessThan(470);
   });
 
   it('saves a snapshot, toggles rod tilt and generates a share hash', async () => {

@@ -6,7 +6,8 @@ import { BoardCanvas } from './components/BoardCanvas';
 import { BoardMenu } from './components/BoardMenu';
 import { TableConfigForm } from './components/TableConfigForm';
 import { clamp, decodeScene, encodeScene, type Point } from './geometry';
-import { buildTableLayoutFromDraft, defaultTableDraft, type SvgLayerData } from './lib/tableLayout';
+import { buildFigureRenderMetrics } from './lib/figureRenderModel';
+import { buildTableLayoutFromDraft, defaultTableDraft, type StoredTableLayout, type SvgLayerData, type TableDraft } from './lib/tableLayout';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
 type DragState =
@@ -34,6 +35,10 @@ type FigurePlacement = {
   anchor: {
     x: number;
     y: number;
+  };
+  anchorBounds?: {
+    width: number;
+    height: number;
   };
 };
 
@@ -77,7 +82,13 @@ type SvgTransform = {
 };
 
 function getSvgNodeName(node: Element, fallback: string) {
-  return (node.getAttribute('inkscape:label') || node.getAttribute('label') || node.getAttribute('id') || fallback).trim();
+  const namespacedLabel =
+    node.getAttribute('inkscape:label') ||
+    node.getAttribute('sodipodi:label') ||
+    Array.from(node.attributes).find((attribute) => attribute.localName.toLowerCase() === 'label')?.value ||
+    '';
+
+  return (namespacedLabel || node.getAttribute('label') || node.getAttribute('id') || fallback).trim();
 }
 
 function mergeBounds(current: Bounds | null, next: Bounds | null): Bounds | null {
@@ -444,7 +455,7 @@ function findSvgNodeByName(root: Element, targetName: string) {
 
   const nodes = [
     root,
-    ...Array.from(root.querySelectorAll('g[id], g[label], g[inkscape\\:label], path[id], rect[id], circle[id], ellipse[id], polygon[id], polyline[id], line[id], use[id]')),
+    ...Array.from(root.querySelectorAll('g, path, rect, circle, ellipse, polygon, polyline, line, use')),
   ] as Element[];
 
   return (
@@ -458,6 +469,7 @@ function getFigurePlacement(svgMarkup: string, anchorGroup: string): FigurePlace
   const fallback: FigurePlacement = {
     bounds: { width: 10, height: 20 },
     anchor: { x: 0.5, y: 0.5 },
+    anchorBounds: { width: 10, height: 10 },
   };
 
   if (!svgMarkup || typeof DOMParser === 'undefined') {
@@ -490,6 +502,12 @@ function getFigurePlacement(svgMarkup: string, anchorGroup: string): FigurePlace
         x: anchorBounds ? clamp(((anchorBounds.minX + anchorBounds.maxX) / 2 - assetBounds.minX) / width, 0, 1) : 0.5,
         y: anchorBounds ? clamp(((anchorBounds.minY + anchorBounds.maxY) / 2 - assetBounds.minY) / height, 0, 1) : 0.5,
       },
+      anchorBounds: anchorBounds
+        ? {
+            width: Math.max(anchorBounds.maxX - anchorBounds.minX, 1),
+            height: Math.max(anchorBounds.maxY - anchorBounds.minY, 1),
+          }
+        : undefined,
     };
   } catch {
     return fallback;
@@ -518,14 +536,14 @@ function extractSvgLayerData(svgMarkup: string): Record<string, SvgLayerData> {
     }
 
     const serializer = new XMLSerializer();
-    const layerNodes = Array.from(root.children).filter((child) => child.matches('g[id], g[label], g[inkscape\\:label]')) as Element[];
+    const layerNodes = Array.from(root.children).filter((child) => child.tagName.toLowerCase() === 'g') as Element[];
     const usableLayers = layerNodes.length > 0 ? layerNodes : [root];
 
     return Object.fromEntries(
       usableLayers.map((node, index) => {
         const layerName = getSvgNodeName(node, `Layer ${index + 1}`);
         const geometryNodes = Array.from(
-          node.querySelectorAll('g[id], g[label], g[inkscape\\:label], path[id], rect[id], circle[id], ellipse[id], polygon[id], polyline[id], line[id], use[id]'),
+          node.querySelectorAll('g, path, rect, circle, ellipse, polygon, polyline, line, use'),
         );
         const geometryOptions = Array.from(
           new Set(
@@ -544,7 +562,7 @@ function extractSvgLayerData(svgMarkup: string): Record<string, SvgLayerData> {
         revealSvgNode(previewNode);
         previewRoot.appendChild(previewNode);
 
-        const bounds = getNodeBounds(previewNode);
+        const bounds = getNodeBounds(previewNode) ?? getRenderedSvgBounds(previewNode);
         if (bounds) {
           const paddingX = Math.max((bounds.maxX - bounds.minX) * 0.08, 2);
           const paddingY = Math.max((bounds.maxY - bounds.minY) * 0.08, 2);
@@ -561,7 +579,7 @@ function extractSvgLayerData(svgMarkup: string): Record<string, SvgLayerData> {
         return [
           layerName,
           {
-            preview: normalizeSvgMarkup(serializer.serializeToString(previewRoot), 'xMidYMid meet', false, 0.08, 0),
+            preview: normalizeSvgMarkup(serializer.serializeToString(previewRoot), 'xMidYMid meet', true, 0.08, 2),
             geometryOptions: geometryOptions.length > 0 ? geometryOptions : fallbackOptions,
             bounds: bounds
               ? {
@@ -580,6 +598,106 @@ function extractSvgLayerData(svgMarkup: string): Record<string, SvgLayerData> {
       'nach hinten': { preview: fallbackPreview, geometryOptions: fallbackOptions },
     };
   }
+}
+
+function buildLayerDataFromStoredAsset(svgMarkup: string, anchorGroup: string, collisionGroup: string): SvgLayerData {
+  const fallbackOptions = ['Verbindungssteg', 'Torso', 'Fuß'];
+  const normalizedPreview = svgMarkup ? normalizeSvgMarkup(svgMarkup, 'xMidYMid meet', true, 0.08, 2) : '';
+  const extractedLayer = Object.values(extractSvgLayerData(svgMarkup))[0];
+  const previewMarkup = extractedLayer?.preview || normalizedPreview;
+  const geometryOptions = Array.from(
+    new Set([anchorGroup, collisionGroup, ...(extractedLayer?.geometryOptions ?? fallbackOptions)].filter(Boolean)),
+  );
+  const placement = getFigurePlacement(previewMarkup, anchorGroup);
+
+  return {
+    preview: previewMarkup,
+    geometryOptions,
+    bounds: extractedLayer?.bounds ?? placement.bounds,
+  };
+}
+
+function buildConfiguratorStateFromLayout(layout: Pick<typeof boardConfig, 'legacy' | 'settings' | 'assets'>): {
+  tableDraft: TableDraft;
+  svgPreviews: Record<string, string>;
+  figureLayerOptions: string[];
+  figureLayerData: Record<string, SvgLayerData>;
+} {
+  const settings = layout.settings;
+  const rows = settings?.configuration.rows;
+  const figureStates = settings?.figures.states;
+
+  const tableDraft: TableDraft = {
+    ...defaultTableDraft,
+    name: layout.legacy.name || defaultTableDraft.name,
+    manufacturer: settings?.manufacturer || defaultTableDraft.manufacturer,
+    fieldLength: settings?.field.lengthCm ?? defaultTableDraft.fieldLength,
+    fieldWidth: settings?.field.widthCm ?? defaultTableDraft.fieldWidth,
+    goalWidth: settings?.field.goalWidthCm ?? defaultTableDraft.goalWidth,
+    rodLength: settings?.configuration.rodLengthCm ?? defaultTableDraft.rodLength,
+    rodDiameter: settings?.configuration.rodDiameterCm ?? defaultTableDraft.rodDiameter,
+    rows: {
+      goalkeeper: { ...defaultTableDraft.rows.goalkeeper, ...(rows?.goalkeeper ?? {}) },
+      defense: { ...defaultTableDraft.rows.defense, ...(rows?.defense ?? {}) },
+      midfield: { ...defaultTableDraft.rows.midfield, ...(rows?.midfield ?? {}) },
+      offense: { ...defaultTableDraft.rows.offense, ...(rows?.offense ?? {}) },
+    },
+    figureWidth: settings?.figures.widthCm ?? defaultTableDraft.figureWidth,
+    playerOneColor: settings?.figures.colors.player1 ?? defaultTableDraft.playerOneColor,
+    playerTwoColor: settings?.figures.colors.player2 ?? defaultTableDraft.playerTwoColor,
+    ballSize: settings?.ball.sizeCm ?? defaultTableDraft.ballSize,
+    ballColor: settings?.ball.color ?? defaultTableDraft.ballColor,
+    figureLayerBottom: figureStates?.unten.layer || defaultTableDraft.figureLayerBottom,
+    figureLayerForward: figureStates?.nachVorn.layer || defaultTableDraft.figureLayerForward,
+    figureLayerBackward: figureStates?.nachHinten.layer || defaultTableDraft.figureLayerBackward,
+    bottomAnchorGroup: figureStates?.unten.anchorGroup || defaultTableDraft.bottomAnchorGroup,
+    bottomCollisionGroup: figureStates?.unten.collisionGroup || defaultTableDraft.bottomCollisionGroup,
+    forwardAnchorGroup: figureStates?.nachVorn.anchorGroup || defaultTableDraft.forwardAnchorGroup,
+    forwardCollisionGroup: figureStates?.nachVorn.collisionGroup || defaultTableDraft.forwardCollisionGroup,
+    backwardAnchorGroup: figureStates?.nachHinten.anchorGroup || defaultTableDraft.backwardAnchorGroup,
+    backwardCollisionGroup: figureStates?.nachHinten.collisionGroup || defaultTableDraft.backwardCollisionGroup,
+  };
+
+  const fieldAssetId = settings?.field.assetId || layout.legacy.sourceAsset;
+  const fieldSvg = fieldAssetId ? normalizeFieldSvgMarkup(layout.assets[fieldAssetId] || '') : '';
+  const figureEntries = [
+    {
+      layerName: tableDraft.figureLayerBottom,
+      assetId: figureStates?.unten.assetId || 'figure.bottom',
+      anchorGroup: tableDraft.bottomAnchorGroup,
+      collisionGroup: tableDraft.bottomCollisionGroup,
+    },
+    {
+      layerName: tableDraft.figureLayerForward,
+      assetId: figureStates?.nachVorn.assetId || 'figure.forward',
+      anchorGroup: tableDraft.forwardAnchorGroup,
+      collisionGroup: tableDraft.forwardCollisionGroup,
+    },
+    {
+      layerName: tableDraft.figureLayerBackward,
+      assetId: figureStates?.nachHinten.assetId || 'figure.backward',
+      anchorGroup: tableDraft.backwardAnchorGroup,
+      collisionGroup: tableDraft.backwardCollisionGroup,
+    },
+  ];
+
+  const figureLayerData = Object.fromEntries(
+    figureEntries.map(({ layerName, assetId, anchorGroup, collisionGroup }) => [
+      layerName,
+      buildLayerDataFromStoredAsset(layout.assets[assetId] || '', anchorGroup, collisionGroup),
+    ]),
+  );
+  const figureLayerOptions = Array.from(new Set(figureEntries.map(({ layerName }) => layerName).filter(Boolean)));
+
+  return {
+    tableDraft,
+    svgPreviews: {
+      field: fieldSvg,
+      figureSource: figureEntries.map(({ assetId }) => layout.assets[assetId] || '').find(Boolean) || '',
+    },
+    figureLayerOptions: figureLayerOptions.length > 0 ? figureLayerOptions : ['unten', 'nach vorn', 'nach hinten'],
+    figureLayerData,
+  };
 }
 
 function App() {
@@ -707,6 +825,15 @@ function App() {
     [tableDraft, svgPreviews, figureLayerData],
   );
 
+  const handleOpenConfig = () => {
+    const configuratorState = buildConfiguratorStateFromLayout(boardConfig as typeof boardConfig & { settings: StoredTableLayout['settings'] });
+    setTableDraft(configuratorState.tableDraft);
+    setSvgPreviews(configuratorState.svgPreviews);
+    setFigureLayerOptions(configuratorState.figureLayerOptions);
+    setFigureLayerData(configuratorState.figureLayerData);
+    setConfigDrawerOpened(true);
+  };
+
   const handleSaveTableConfiguration = () => {
     window.localStorage.setItem('foosboard.tableLayout', JSON.stringify(tableExportData));
     applyTableLayout(tableExportData);
@@ -729,11 +856,23 @@ function App() {
   };
 
   const bottomFigurePreview = getLayerPreview(tableDraft.figureLayerBottom);
+  const forwardFigurePreview = getLayerPreview(tableDraft.figureLayerForward);
+  const backwardFigurePreview = getLayerPreview(tableDraft.figureLayerBackward);
   const bottomFigurePlacement = useMemo(
     () => getFigurePlacement(bottomFigurePreview, tableDraft.bottomAnchorGroup),
     [bottomFigurePreview, tableDraft.bottomAnchorGroup],
   );
+  const forwardFigurePlacement = useMemo(
+    () => getFigurePlacement(forwardFigurePreview, tableDraft.forwardAnchorGroup),
+    [forwardFigurePreview, tableDraft.forwardAnchorGroup],
+  );
+  const backwardFigurePlacement = useMemo(
+    () => getFigurePlacement(backwardFigurePreview, tableDraft.backwardAnchorGroup),
+    [backwardFigurePreview, tableDraft.backwardAnchorGroup],
+  );
   const bottomFigureBounds = getLayerBounds(tableDraft.figureLayerBottom) ?? bottomFigurePlacement.bounds;
+  const forwardFigureBounds = getLayerBounds(tableDraft.figureLayerForward) ?? forwardFigurePlacement.bounds;
+  const backwardFigureBounds = getLayerBounds(tableDraft.figureLayerBackward) ?? backwardFigurePlacement.bounds;
   const ball = useBoardStore((state) => state.ball);
   const rods = useBoardStore((state) => state.rods);
   const shots = useBoardStore((state) => state.shots);
@@ -913,22 +1052,31 @@ function App() {
   );
   const figureStates = boardConfig.settings?.figures.states;
   const liveFigureStates = useMemo(() => {
-    const targetFigureWidth = (liveFigureWidthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight;
-
     const buildState = (stateKey: FigureStateKey) => {
       const state = figureStates?.[stateKey];
       const assetMarkup = state?.assetId ? boardConfig.assets[state.assetId] || '' : '';
       const layerPreview = assetMarkup && state?.layer ? extractSvgLayerData(assetMarkup)[state.layer]?.preview || '' : '';
       const markup = layerPreview || (assetMarkup ? normalizeSvgMarkup(assetMarkup, 'xMidYMid meet', true, 0.08, 0) : '');
       const placement = getFigurePlacement(markup, state?.anchorGroup || '');
-      const scale = targetFigureWidth / Math.max(placement.bounds.width, 1);
+      const metrics = buildFigureRenderMetrics({
+        state: {
+          markup,
+          bounds: placement.bounds,
+          anchor: placement.anchor,
+          referenceWidth: placement.anchorBounds?.width || placement.bounds.width,
+        },
+        figureWidthCm: liveFigureWidthCm,
+        fieldWidthCm: liveFieldWidthCm,
+        viewFieldHeight: boardConfig.fieldHeight,
+        minWidth: 10,
+        minHeight: 10,
+      });
 
       return {
         markup,
-        bounds: placement.bounds,
-        width: Math.max(targetFigureWidth, 10),
-        height: Math.max(placement.bounds.height * scale, 10),
-        anchor: placement.anchor,
+        width: metrics.width,
+        height: metrics.height,
+        anchor: metrics.anchor,
       };
     };
 
@@ -938,15 +1086,34 @@ function App() {
       nachHinten: buildState('nachHinten'),
     };
   }, [boardConfig.assets, boardConfig.fieldHeight, figureStates, liveFigureWidthCm, liveFieldWidthCm]);
-  const previewFigureMarkup = bottomFigurePreview || liveFigureStates.unten.markup;
-  const previewFigureBounds = bottomFigurePreview ? bottomFigureBounds : liveFigureStates.unten.bounds;
-  const previewFigureAnchor = bottomFigurePreview ? bottomFigurePlacement.anchor : liveFigureStates.unten.anchor;
+  const previewFigureStates = {
+    unten: {
+      markup: bottomFigurePreview || liveFigureStates.unten.markup,
+      bounds: bottomFigurePreview ? bottomFigureBounds : liveFigureStates.unten.bounds,
+      anchor: bottomFigurePreview ? bottomFigurePlacement.anchor : liveFigureStates.unten.anchor,
+      referenceWidth: bottomFigurePlacement.anchorBounds?.width || (bottomFigurePreview ? bottomFigureBounds.width : liveFigureStates.unten.bounds.width),
+    },
+    nachVorn: {
+      markup: forwardFigurePreview || liveFigureStates.nachVorn.markup,
+      bounds: forwardFigurePreview ? forwardFigureBounds : liveFigureStates.nachVorn.bounds,
+      anchor: forwardFigurePreview ? forwardFigurePlacement.anchor : liveFigureStates.nachVorn.anchor,
+      referenceWidth: forwardFigurePlacement.anchorBounds?.width || (forwardFigurePreview ? forwardFigureBounds.width : liveFigureStates.nachVorn.bounds.width),
+    },
+    nachHinten: {
+      markup: backwardFigurePreview || liveFigureStates.nachHinten.markup,
+      bounds: backwardFigurePreview ? backwardFigureBounds : liveFigureStates.nachHinten.bounds,
+      anchor: backwardFigurePreview ? backwardFigurePlacement.anchor : liveFigureStates.nachHinten.anchor,
+      referenceWidth: backwardFigurePlacement.anchorBounds?.width || (backwardFigurePreview ? backwardFigureBounds.width : liveFigureStates.nachHinten.bounds.width),
+    },
+  };
+  const previewFigureMarkup = previewFigureStates.unten.markup;
+  const previewFigureState = previewFigureStates.unten;
   const liveRodHandleWidth = Math.max(liveFigureStates.unten.width * 1.2, liveGripThickness * 4, 40);
   const liveRodHandleHeight = Math.max(liveFigureStates.unten.height * 1.4, 56);
 
   return (
     <AppShell padding={0}>
-      <BoardMenu selectedTable={selectedTable} onOpenConfig={() => setConfigDrawerOpened(true)} />
+      <BoardMenu selectedTable={selectedTable} onOpenConfig={handleOpenConfig} />
 
       <TableConfigForm
         opened={configDrawerOpened}
@@ -977,9 +1144,9 @@ function App() {
         figureLayerOptions={figureLayerOptions}
         getGeometryOptionsForLayer={getGeometryOptionsForLayer}
         getLayerPreview={getLayerPreview}
+        previewFigureStates={previewFigureStates}
         previewFigureMarkup={previewFigureMarkup}
-        previewFigureBounds={previewFigureBounds}
-        previewFigureAnchor={previewFigureAnchor}
+        previewFigureState={previewFigureState}
         onSave={handleSaveTableConfiguration}
         onDownloadJson={handleDownloadJson}
       />

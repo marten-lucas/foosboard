@@ -4,7 +4,7 @@
     "sourceAsset": "field.primary",
     "legacyViewBox": [
       610,
-      470
+      634.706
     ],
     "description": "Konfigurierter Tisch Ullrich Sport Ullrich P4P"
   },
@@ -88,23 +88,23 @@
   },
   "dimensions": {
     "width": 610,
-    "height": 470,
+    "height": 634.706,
     "fieldX": 22.213,
-    "fieldY": 73.35,
+    "fieldY": 157.353,
     "fieldWidth": 560.31,
     "fieldHeight": 320,
     "frameX": 17.213,
-    "frameY": 68.35,
+    "frameY": 152.353,
     "frameWidth": 570.31,
     "frameHeight": 330,
     "goalWidth": 96.47058823529412,
     "goalDepth": 5.213,
     "centerCircleRadius": 45,
     "centerX": 302.368,
-    "centerY": 233.35,
+    "centerY": 317.353,
     "ballRadius": 8.235294117647058,
-    "rodMinY": 113.35,
-    "rodMaxY": 353.35,
+    "rodMinY": 197.353,
+    "rodMaxY": 437.353,
     "figureRadius": 6,
     "figureSpacing": 60
   },
@@ -124,7 +124,7 @@
       "team": "orange",
       "x": 57.232375,
       "playerCount": 1,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         0
       ],
@@ -137,7 +137,7 @@
       "team": "orange",
       "x": 127.27112499999998,
       "playerCount": 2,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         -55,
         55
@@ -151,7 +151,7 @@
       "team": "blue",
       "x": 197.30987499999992,
       "playerCount": 3,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         -85,
         0,
@@ -166,7 +166,7 @@
       "team": "orange",
       "x": 267.34862499999997,
       "playerCount": 5,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         -120,
         -60,
@@ -183,7 +183,7 @@
       "team": "blue",
       "x": 337.3873749999999,
       "playerCount": 5,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         -120,
         -60,
@@ -200,7 +200,7 @@
       "team": "orange",
       "x": 407.426125,
       "playerCount": 3,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         -85,
         0,
@@ -215,7 +215,7 @@
       "team": "blue",
       "x": 477.4648749999999,
       "playerCount": 2,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         -55,
         55
@@ -229,7 +229,7 @@
       "team": "blue",
       "x": 547.5036249999999,
       "playerCount": 1,
-      "defaultY": 233.35,
+      "defaultY": 317.353,
       "figureOffsets": [
         0
       ],

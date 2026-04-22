@@ -5,6 +5,7 @@ import { SplitSaveButton } from './SplitSaveButton';
 import { TablePreviewCanvas } from './TablePreviewCanvas';
 import { UploadDropzone } from './UploadDropzone';
 import type { TableDraft, TableRowKey } from '../lib/tableLayout';
+import type { PreviewFigureState } from '../lib/figureRenderModel';
 
 type TableConfigFormProps = {
   opened: boolean;
@@ -35,9 +36,13 @@ type TableConfigFormProps = {
   figureLayerOptions: string[];
   getGeometryOptionsForLayer: (layerName: string) => string[];
   getLayerPreview: (layerName: string) => string;
+  previewFigureStates: {
+    unten: PreviewFigureState;
+    nachVorn: PreviewFigureState;
+    nachHinten: PreviewFigureState;
+  };
   previewFigureMarkup: string;
-  previewFigureBounds: { width: number; height: number };
-  previewFigureAnchor: { x: number; y: number };
+  previewFigureState: PreviewFigureState;
   onSave: () => void;
   onDownloadJson: () => void;
 };
@@ -71,9 +76,9 @@ export function TableConfigForm({
   figureLayerOptions,
   getGeometryOptionsForLayer,
   getLayerPreview,
+  previewFigureStates,
   previewFigureMarkup,
-  previewFigureBounds,
-  previewFigureAnchor,
+  previewFigureState,
   onSave,
   onDownloadJson,
 }: TableConfigFormProps) {
@@ -183,8 +188,7 @@ export function TableConfigForm({
                   ballColor={tableDraft.ballColor}
                   useConfiguredFigurePreview={Boolean(previewFigureMarkup)}
                   bottomFigurePreview={previewFigureMarkup}
-                  figurePreviewBounds={previewFigureBounds}
-                  figureAnchor={previewFigureAnchor}
+                  figurePreviewState={previewFigureState}
                 />
               </Paper>
             </Stack>
@@ -258,14 +262,13 @@ export function TableConfigForm({
                     </Paper>
                   );
                 })}
-                <Paper withBorder p="xs" className="foosboard-preview-card" data-testid="figure-rod-preview-card">
+                <Paper withBorder p="xs" className="foosboard-preview-card foosboard-preview-card--stretch" data-testid="figure-rod-preview-card">
                   <FigureRodPreview
                     testId="figure-rod-preview-canvas"
-                    figureMarkup={previewFigureMarkup}
-                    figureBounds={previewFigureBounds}
-                    figureAnchor={previewFigureAnchor}
+                    figureStates={previewFigureStates}
                     figureColor={tableDraft.playerOneColor}
                     ballColor={tableDraft.ballColor}
+                    rodDiameterCm={tableDraft.rodDiameter}
                     figureWidthCm={tableDraft.figureWidth}
                     ballSizeCm={tableDraft.ballSize}
                     fieldWidthCm={tableDraft.fieldWidth}
@@ -306,8 +309,7 @@ export function TableConfigForm({
                   includeBall
                   useConfiguredFigurePreview={Boolean(previewFigureMarkup)}
                   bottomFigurePreview={previewFigureMarkup}
-                  figurePreviewBounds={previewFigureBounds}
-                  figureAnchor={previewFigureAnchor}
+                  figurePreviewState={previewFigureState}
                 />
               </Paper>
             </Stack>

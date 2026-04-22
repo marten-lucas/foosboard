@@ -1,3 +1,5 @@
+import { buildCenteredOffsets } from './rowFigureLayout';
+
 export type TableRowKey = 'goalkeeper' | 'defense' | 'midfield' | 'offense';
 
 export type TableRowConfig = {
@@ -156,11 +158,10 @@ export const defaultTableDraft: TableDraft = {
 };
 
 const BOARD_WIDTH = 610;
-const BOARD_HEIGHT = 470;
 const FIELD_HEIGHT_UNITS = 320;
-const FIELD_Y = 73.35;
 const FIELD_X = 22.213;
 const FRAME_MARGIN = 5;
+const FIELD_MARGIN = 15; // Board-Einheiten Puffer oberhalb/unterhalb des Stangen-Überstands
 const CENTER_CIRCLE_RATIO = 45 / 320;
 const GOAL_DEPTH = 5.213;
 
@@ -170,8 +171,7 @@ function toFieldUnits(valueCm: number, totalCm: number, totalUnits: number) {
 
 function buildFigureOffsets(row: TableRowConfig, fieldWidthCm: number) {
   const spacingUnits = toFieldUnits(row.spacing, fieldWidthCm, FIELD_HEIGHT_UNITS);
-  const centerYOffset = (row.playerCount - 1) * spacingUnits * 0.5;
-  return Array.from({ length: row.playerCount }, (_, index) => index * spacingUnits - centerYOffset);
+  return buildCenteredOffsets(row.playerCount, spacingUnits);
 }
 
 export function buildTableLayoutFromDraft(
@@ -179,6 +179,13 @@ export function buildTableLayoutFromDraft(
   svgPreviews: Record<string, string>,
   layerData: Record<string, SvgLayerData>,
 ): StoredTableLayout {
+  // Stangen-Überstand in Board-Einheiten bestimmt die nötige Randhöhe.
+  const rodExtensionUnits = Math.max(
+    ((draft.rodLength - draft.fieldWidth) / 2 / Math.max(draft.fieldWidth, 1)) * FIELD_HEIGHT_UNITS,
+    0,
+  );
+  const FIELD_Y = rodExtensionUnits + FIELD_MARGIN;
+  const BOARD_HEIGHT = FIELD_HEIGHT_UNITS + 2 * FIELD_Y;
   const fieldWidthUnits = BOARD_WIDTH - FIELD_X * 2 - 5.264;
   const fieldX = FIELD_X;
   const frameX = fieldX - FRAME_MARGIN;

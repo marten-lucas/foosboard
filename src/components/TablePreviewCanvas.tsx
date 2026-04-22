@@ -1,5 +1,7 @@
 import type { TableRowConfig, TableRowKey } from '../lib/tableLayout';
-import { clamp } from '../geometry';
+import { buildFigureRenderMetrics, buildRodStrokeWidth, type PreviewFigureState } from '../lib/figureRenderModel';
+import { buildCenteredFigurePositionsCm } from '../lib/rowFigureLayout';
+import { SharedVisualDefs } from './SharedVisualDefs';
 
 type TablePreviewCanvasProps = {
   testId: string;
@@ -30,24 +32,11 @@ type TablePreviewCanvasProps = {
   ballColor: string;
   useConfiguredFigurePreview?: boolean;
   bottomFigurePreview?: string;
-  figurePreviewBounds?: {
-    width: number;
-    height: number;
-  };
-  figureAnchor?: {
-    x: number;
-    y: number;
-  };
+  figurePreviewState?: PreviewFigureState;
 };
 
 function buildPreviewFigurePositions(row: TableRowConfig, fieldWidthCm: number) {
-  return Array.from({ length: row.playerCount }, (_, index) =>
-    clamp(
-      fieldWidthCm / 2 + (index - (row.playerCount - 1) / 2) * row.spacing,
-      2,
-      Math.max(fieldWidthCm - 2, 2),
-    ),
-  );
+  return buildCenteredFigurePositionsCm(row, fieldWidthCm);
 }
 
 export function TablePreviewCanvas({
@@ -79,20 +68,29 @@ export function TablePreviewCanvas({
   ballColor,
   useConfiguredFigurePreview = false,
   bottomFigurePreview,
-  figurePreviewBounds,
-  figureAnchor,
+  figurePreviewState,
 }: TablePreviewCanvasProps) {
   const goalHeight = (goalWidthCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight;
   const goalY = previewFieldY + (previewFieldHeight - goalHeight) / 2;
   const goalDepth = Math.max(frameThickness / 2, 1);
-  const figureBounds = figurePreviewBounds && figurePreviewBounds.width > 0 && figurePreviewBounds.height > 0
-    ? figurePreviewBounds
-    : { width: 10, height: 20 };
-  const anchor = figureAnchor ? { x: figureAnchor.x, y: figureAnchor.y } : { x: 0.5, y: 0.5 };
-  const targetFigureWidth = (figureWidthCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight;
-  const previewScale = targetFigureWidth / Math.max(figureBounds.width, 1);
-  const configuredFigureWidth = Math.max(targetFigureWidth, 1.8);
-  const configuredFigureHeight = Math.max(figureBounds.height * previewScale, 1.8);
+  const resolvedFigureState: PreviewFigureState = figurePreviewState || {
+    markup: bottomFigurePreview || '',
+    bounds: { width: 10, height: 20 },
+    anchor: { x: 0.5, y: 0.5 },
+    referenceWidth: 10,
+  };
+  const configuredFigureMetrics = buildFigureRenderMetrics({
+    state: resolvedFigureState,
+    figureWidthCm,
+    fieldWidthCm,
+    viewFieldHeight: previewFieldHeight,
+    minWidth: 1.8,
+    minHeight: 1.8,
+  });
+  const configuredFigureWidth = configuredFigureMetrics.width;
+  const configuredFigureHeight = configuredFigureMetrics.height;
+  const anchor = configuredFigureMetrics.anchor;
+  const targetFigureWidth = configuredFigureMetrics.targetMountWidth;
   const simpleFigureWidth = Math.max(targetFigureWidth, 2.4);
   const simpleFigureHeight = Math.max(simpleFigureWidth * 1.45, 6);
   const rowKeys = visibleRows && visibleRows.length > 0 ? visibleRows : (['goalkeeper', 'defense', 'midfield', 'offense'] as TableRowKey[]);
@@ -129,19 +127,39 @@ export function TablePreviewCanvas({
         className="foosboard-table-preview foosboard-table-preview--overlay"
         aria-label={ariaLabel}
         preserveAspectRatio="xMidYMid meet"
+        data-field-height={previewFieldHeight}
+        data-rod-extension={rodExtension}
       >
+        <defs>
+          <SharedVisualDefs />
+        </defs>
         {rowKeys.flatMap((rowKey) => {
           const row = rows[rowKey];
           const leftX = previewFieldX + (row.position / Math.max(fieldLengthCm, 1)) * previewFieldWidth;
           const rightX = previewFieldX + previewFieldWidth - (row.position / Math.max(fieldLengthCm, 1)) * previewFieldWidth;
-          const rodStrokeWidth = Math.max(rodDiameter, 0.6);
+          const rodStrokeWidth = buildRodStrokeWidth({
+            rodDiameterCm: rodDiameter,
+            fieldWidthCm,
+            viewFieldHeight: previewFieldHeight,
+            min: 0.6,
+          });
           const points = buildPreviewFigurePositions(row, fieldWidthCm);
           const gripSize = Math.min(Math.max(rodExtension, 0), gripLength);
+          const p1RodTop = previewFieldY;
+          const p1RodBottom = previewFieldY + previewFieldHeight + rodExtension;
+          const p2RodTop = previewFieldY - rodExtension;
+          const p2RodBottom = previewFieldY + previewFieldHeight;
 
           return [
             <g key={`${rowKey}-p1`}>
-              <line x1={leftX} y1={previewFieldY} x2={leftX} y2={previewFieldY + previewFieldHeight + rodExtension} stroke="#444" strokeWidth={rodStrokeWidth} />
-              <rect x={leftX - gripThickness / 2} y={previewFieldY + previewFieldHeight + rodExtension - gripSize} width={gripThickness} height={gripSize} rx="1" fill="#111" stroke="rgba(0,0,0,0.35)" strokeWidth="0.4" />
+              <rect
+                x={leftX - rodStrokeWidth / 2}
+                y={p1RodTop}
+                width={rodStrokeWidth}
+                height={p1RodBottom - p1RodTop}
+                fill="url(#rodGradient)"
+              />
+              <rect x={leftX - gripThickness / 2} y={p1RodBottom - gripSize} width={gripThickness} height={gripSize} rx="1" fill="url(#gripGradient)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.4" />
               {!useConfiguredFigurePreview ? points.map((point, index) => (
                 <rect
                   key={`${rowKey}-p1-${index}`}
@@ -157,8 +175,14 @@ export function TablePreviewCanvas({
               )) : null}
             </g>,
             <g key={`${rowKey}-p2`}>
-              <line x1={rightX} y1={previewFieldY - rodExtension} x2={rightX} y2={previewFieldY + previewFieldHeight} stroke="#444" strokeWidth={rodStrokeWidth} />
-              <rect x={rightX - gripThickness / 2} y={previewFieldY - rodExtension} width={gripThickness} height={gripSize} rx="1" fill="#111" stroke="rgba(0,0,0,0.35)" strokeWidth="0.4" />
+              <rect
+                x={rightX - rodStrokeWidth / 2}
+                y={p2RodTop}
+                width={rodStrokeWidth}
+                height={p2RodBottom - p2RodTop}
+                fill="url(#rodGradient)"
+              />
+              <rect x={rightX - gripThickness / 2} y={p2RodTop} width={gripThickness} height={gripSize} rx="1" fill="url(#gripGradient)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.4" />
               {!useConfiguredFigurePreview ? points.map((point, index) => (
                 <rect
                   key={`${rowKey}-p2-${index}`}
@@ -177,14 +201,22 @@ export function TablePreviewCanvas({
         })}
 
         {includeBall ? (
-          <circle
-            cx={previewFieldX + previewFieldWidth / 2}
-            cy={previewFieldY + previewFieldHeight / 2}
-            r={Math.max((ballSizeCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight / 2, 1.2)}
-            fill={ballColor}
-            stroke="#333"
-            strokeWidth="0.5"
-          />
+          <>
+            <circle
+              cx={previewFieldX + previewFieldWidth / 2}
+              cy={previewFieldY + previewFieldHeight / 2}
+              r={Math.max((ballSizeCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight / 2, 1.2)}
+              fill="url(#ballGradient)"
+              stroke="rgba(60,60,60,0.45)"
+              strokeWidth="0.8"
+            />
+            <circle
+              cx={previewFieldX + previewFieldWidth / 2 - Math.max((ballSizeCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight / 2, 1.2) * 0.27}
+              cy={previewFieldY + previewFieldHeight / 2 - Math.max((ballSizeCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight / 2, 1.2) * 0.29}
+              r={Math.max((ballSizeCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight / 2, 1.2) * 0.22}
+              fill="rgba(255,255,255,0.82)"
+            />
+          </>
         ) : null}
 
         {useConfiguredFigurePreview && bottomFigurePreview
