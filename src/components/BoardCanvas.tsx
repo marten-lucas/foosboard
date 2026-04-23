@@ -1,11 +1,13 @@
 import type { RefObject } from 'react';
-import { boardConfig, normalizeTiltMode, type BallState, type RodConfig, type RodState } from '../boardConfig';
+import { boardConfig, normalizeTiltMode, type BallTokenState, type RodConfig, type RodState } from '../boardConfig';
 import { defaultTableDraft } from '../lib/tableLayout';
 import { getRodGeometry, getRodRowKey } from '../lib/rodLayout';
 import { buildTableSurfaceGeometry, TABLE_FRAME_THICKNESS_CM } from '../lib/tableSurface';
 import { TableGoalVisuals } from './TableGoalVisuals';
 import { SharedVisualDefs } from './SharedVisualDefs';
 import { buildCenteredOffsets } from '../lib/rowFigureLayout';
+import { getBallTrayLayout } from '../lib/ballLayout';
+import type { Point } from '../geometry';
 
 type FigureStateKey = 'unten' | 'nachVorn' | 'nachHinten';
 
@@ -26,8 +28,9 @@ function getFigureForeignObjectX(width: number, anchorX: number, mirrored: boole
 type BoardCanvasProps = {
   svgRef: RefObject<SVGSVGElement | null>;
   isPortraitViewport: boolean;
-  ball: BallState;
-  showBall?: boolean;
+  balls: BallTokenState[];
+  draggingBallId: string | null;
+  fallingBallId: string | null;
   rods: Record<RodConfig['id'], RodState>;
   savedFieldAsset: string;
   liveRodExtension: number;
@@ -37,7 +40,7 @@ type BoardCanvasProps = {
   liveRodHandleHeight: number;
   liveFigureStates: Record<FigureStateKey, LiveFigureState>;
   onBoardPointerDown: (event: React.PointerEvent<SVGSVGElement>) => void;
-  onStartBallDrag: (event: React.PointerEvent<SVGCircleElement>) => void;
+  onStartBallDrag: (event: React.PointerEvent<SVGCircleElement>, ballId: string | null, origin: Point) => void;
   onStartRodDrag: (rodId: RodConfig['id'], event: React.PointerEvent<SVGRectElement>) => void;
   onNudgeRod: (rodId: RodConfig['id'], direction: 'towards-top' | 'towards-bottom') => void;
   onCycleRodTilt: (rodId: RodConfig['id']) => void;
@@ -68,8 +71,9 @@ function getRodOffsets(rod: RodConfig): number[] {
 export function BoardCanvas({
   svgRef,
   isPortraitViewport,
-  ball,
-  showBall = true,
+  balls,
+  draggingBallId,
+  fallingBallId,
   rods,
   savedFieldAsset,
   liveRodExtension,
@@ -95,6 +99,7 @@ export function BoardCanvas({
     goalWidth: boardConfig.goalWidth,
     goalDepth: boardConfig.goalDepth,
   });
+  const ballTray = getBallTrayLayout();
 
   return (
     <div className={`foosboard-board-wrap${isPortraitViewport ? ' foosboard-board-wrap--portrait' : ''}`}>
@@ -121,6 +126,78 @@ export function BoardCanvas({
             <div className="foosboard-live-field-asset" dangerouslySetInnerHTML={{ __html: savedFieldAsset }} />
           </foreignObject>
         ) : null}
+        {balls.map((ball) => (
+          <g
+            key={ball.id}
+            className={[
+              'foosboard-ball-token',
+              draggingBallId === ball.id ? 'foosboard-ball-token--dragging' : '',
+              fallingBallId === ball.id ? 'foosboard-ball-token--dropping' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ pointerEvents: 'none', transform: `translate(${ball.x}px, ${ball.y}px)` }}
+            aria-hidden="true"
+          >
+            <circle cx={0} cy={0} r={boardConfig.ballRadius} fill="url(#ballGradient)" stroke="rgba(60,60,60,0.45)" strokeWidth={1.5} />
+            <circle
+              cx={-boardConfig.ballRadius * 0.27}
+              cy={-boardConfig.ballRadius * 0.29}
+              r={boardConfig.ballRadius * 0.22}
+              fill="rgba(255,255,255,0.82)"
+              style={{ pointerEvents: 'none' }}
+            />
+          </g>
+        ))}
+        <g>
+          {ballTray.trays.map((tray) => (
+            <g key={tray.id} data-testid={`ball-tray-${tray.id}`} className={`foosboard-ball-tray foosboard-ball-tray--${tray.id}`}>
+              <rect
+                x={tray.tray.x}
+                y={tray.tray.y}
+                width={tray.tray.width}
+                height={tray.tray.height}
+                rx={tray.tray.rx}
+                fill="rgba(255,255,255,0.38)"
+                stroke="rgba(45,45,45,0.18)"
+                strokeWidth={1}
+              />
+              <text
+                x={tray.labelPoint.x}
+                y={tray.labelPoint.y}
+                textAnchor="middle"
+                fill="rgba(25,25,25,0.52)"
+                fontSize="8"
+                letterSpacing="0.08em"
+                style={{ userSelect: 'none', pointerEvents: 'none' }}
+              >
+                Bälle
+              </text>
+              {tray.balls.map((ball) => (
+                <g key={ball.id} style={{ transform: `translate(${ball.point.x}px, ${ball.point.y}px)` }}>
+                  <circle
+                    data-testid={`ball-tray-${tray.id}-${ball.id}`}
+                    cx={0}
+                    cy={0}
+                    r={boardConfig.ballRadius}
+                    fill="url(#ballGradient)"
+                    stroke="rgba(60,60,60,0.4)"
+                    strokeWidth={1.25}
+                    cursor="grab"
+                    onPointerDown={(event) => onStartBallDrag(event, null, ball.point)}
+                  />
+                  <circle
+                    cx={-boardConfig.ballRadius * 0.27}
+                    cy={-boardConfig.ballRadius * 0.29}
+                    r={boardConfig.ballRadius * 0.22}
+                    fill="rgba(255,255,255,0.82)"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                </g>
+              ))}
+            </g>
+          ))}
+        </g>
         {boardConfig.rods.map((rod) => {
           const rodState = rods[rod.id];
           const rowKey = getRodRowKey(rod.id);
@@ -147,6 +224,7 @@ export function BoardCanvas({
               data-row-key={rowKey}
               data-rod-length-cm={rod.rodLengthCm}
               data-rod-extension={rodGeometry.rodExtension}
+              data-tilt-state={rodState.tilt}
               transform={`translate(${rod.x},0)`}
             >
               {/* Stange als Rect mit zylindrischem Gradient */}
@@ -279,30 +357,26 @@ export function BoardCanvas({
 
         <TableGoalVisuals goals={tableSurface.goals} />
 
-        {showBall ? (
-          <g>
-            {/* Ball – sphärischer Lichteffekt */}
+        {balls.map((ball) => (
+          <g
+            key={`${ball.id}-hitbox`}
+            data-testid={`ball-${ball.id}`}
+            className="foosboard-ball-hitbox"
+            style={{ transform: `translate(${ball.x}px, ${ball.y}px)` }}
+          >
             <circle
-              data-testid="ball-token"
-              cx={ball.x}
-              cy={ball.y}
-              r={boardConfig.ballRadius}
-              fill="url(#ballGradient)"
-              stroke="rgba(60,60,60,0.45)"
-              strokeWidth={1.5}
-              onPointerDown={onStartBallDrag}
+              cx={0}
+              cy={0}
+              r={boardConfig.ballRadius + 6}
+              fill="rgba(0,0,0,0.001)"
+              stroke="rgba(0,0,0,0.001)"
+              strokeWidth={1}
               cursor="grab"
-            />
-            {/* Spekulares Highlight */}
-            <circle
-              cx={ball.x - boardConfig.ballRadius * 0.27}
-              cy={ball.y - boardConfig.ballRadius * 0.29}
-              r={boardConfig.ballRadius * 0.22}
-              fill="rgba(255,255,255,0.82)"
-              style={{ pointerEvents: 'none' }}
+              onPointerDown={(event) => onStartBallDrag(event, ball.id, { x: ball.x, y: ball.y })}
             />
           </g>
-        ) : null}
+        ))}
+
       </svg>
     </div>
   );

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { boardConfig, applyTableLayout, type RodConfig, type SerializableScene } from './boardConfig';
+import { boardConfig, applyTableLayout, type RodConfig, type RodState, type SerializableScene } from './boardConfig';
 import { BoardCanvas } from './components/BoardCanvas';
 import { BoardMenu } from './components/BoardMenu';
 import { TableConfigForm } from './components/TableConfigForm';
 import { clamp, decodeScene, encodeScene, type Point } from './geometry';
 import { buildFigureRenderMetrics } from './lib/figureRenderModel';
+import { getBallPossessionContext, hasBallCollision, resolveBallDrop } from './lib/ballLayout';
 import { buildRodMotionBounds, getMaxRodExtension, getRodGeometry } from './lib/rodLayout';
 import { TABLE_FRAME_THICKNESS_CM } from './lib/tableSurface';
 import { buildTableLayoutFromDraft, defaultTableDraft, type StoredTableLayout, type SvgLayerData, type TableDraft } from './lib/tableLayout';
@@ -16,16 +17,15 @@ type DragState =
   | {
       kind: 'ball';
       pointerId: number;
+      ballId: string;
+      source: 'tray' | 'board';
       offsetX: number;
       offsetY: number;
-    }
-  | {
-      kind: 'rod';
-      pointerId: number;
-      rodId: RodConfig['id'];
-      offsetY: number;
+      origin: Point;
     }
   | null;
+
+type BallDragState = Extract<DragState, { kind: 'ball' }>;
 
 type FigureStateKey = 'unten' | 'nachVorn' | 'nachHinten';
 
@@ -47,6 +47,21 @@ type FigurePlacement = {
 function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null, isPortraitViewport = false): Point {
   if (!svg) {
     return { x: 0, y: 0 };
+  }
+
+  if (typeof svg.createSVGPoint === 'function' && typeof svg.getScreenCTM === 'function') {
+    const svgPoint = svg.createSVGPoint();
+    svgPoint.x = event.clientX;
+    svgPoint.y = event.clientY;
+    const screenMatrix = svg.getScreenCTM();
+
+    if (screenMatrix) {
+      const transformed = svgPoint.matrixTransform(screenMatrix.inverse());
+      return {
+        x: transformed.x,
+        y: transformed.y,
+      };
+    }
   }
 
   const rect = svg.getBoundingClientRect();
@@ -73,6 +88,36 @@ function findMatchingOption(options: string[], terms: string[], fallbackIndex = 
     options[fallbackIndex] ||
     ''
   );
+}
+
+function getDraggedBallPoint(point: Point, drag: BallDragState) {
+  const left = boardConfig.fieldX + boardConfig.ballRadius;
+  const right = boardConfig.fieldX + boardConfig.fieldWidth - boardConfig.ballRadius;
+  const top = boardConfig.fieldY + boardConfig.ballRadius;
+  const bottom = boardConfig.fieldY + boardConfig.fieldHeight - boardConfig.ballRadius;
+  const escapeThreshold = Math.max(boardConfig.ballRadius * 10, 120);
+  const rawX = point.x - drag.offsetX;
+  const rawY = point.y - drag.offsetY;
+
+  const resolveAxis = (rawValue: number, minValue: number, maxValue: number) => {
+    if (rawValue >= minValue && rawValue <= maxValue) {
+      return rawValue;
+    }
+
+    const clampedValue = clamp(rawValue, minValue, maxValue);
+    const distanceOutside = rawValue < minValue ? minValue - rawValue : rawValue - maxValue;
+
+    if (distanceOutside <= escapeThreshold) {
+      return clampedValue;
+    }
+
+    return rawValue;
+  };
+
+  return {
+    x: resolveAxis(rawX, left, right),
+    y: resolveAxis(rawY, top, bottom),
+  };
 }
 
 function findMatchingGeometry(options: string[], terms: string[]) {
@@ -768,6 +813,9 @@ function App() {
   const [shareLink, setShareLink] = useState('');
   const [figureLayerOptions, setFigureLayerOptions] = useState(['unten', 'nach vorn', 'nach hinten']);
   const [figureLayerData, setFigureLayerData] = useState<Record<string, SvgLayerData>>({});
+  const [draggingBallId, setDraggingBallId] = useState<string | null>(null);
+  const [fallingBallId, setFallingBallId] = useState<string | null>(null);
+  const fallTimerRef = useRef<number | null>(null);
 
   const updateRowConfig = (
     row: 'goalkeeper' | 'defense' | 'midfield' | 'offense',
@@ -945,13 +993,16 @@ function App() {
   const bottomFigureBounds = getLayerBounds(tableDraft.figureLayerBottom) ?? bottomFigurePlacement.bounds;
   const forwardFigureBounds = getLayerBounds(tableDraft.figureLayerForward) ?? forwardFigurePlacement.bounds;
   const backwardFigureBounds = getLayerBounds(tableDraft.figureLayerBackward) ?? backwardFigurePlacement.bounds;
-  const ball = useBoardStore((state) => state.ball);
+  const balls = useBoardStore((state) => state.balls);
   const rods = useBoardStore((state) => state.rods);
   const shots = useBoardStore((state) => state.shots);
   const snapshots = useBoardStore((state) => state.snapshots);
   const activeTool = useBoardStore((state) => state.activeTool);
   const activeShotColor = useBoardStore((state) => state.activeShotColor);
-  const setBall = useBoardStore((state) => state.setBall);
+  const spawnBall = useBoardStore((state) => state.spawnBall);
+  const moveBall = useBoardStore((state) => state.moveBall);
+  const removeBall = useBoardStore((state) => state.removeBall);
+  const setActiveBall = useBoardStore((state) => state.setActiveBall);
   const moveRod = useBoardStore((state) => state.moveRod);
   const cycleRodTilt = useBoardStore((state) => state.cycleRodTilt);
   const addShot = useBoardStore((state) => state.addShot);
@@ -961,15 +1012,56 @@ function App() {
   const resetScene = useBoardStore((state) => state.resetScene);
   const hydrateScene = useBoardStore((state) => state.hydrateScene);
 
-  const fieldBounds = useMemo(
-    () => ({
-      left: boardConfig.fieldX,
-      top: boardConfig.fieldY,
-      right: boardConfig.fieldX + boardConfig.fieldWidth,
-      bottom: boardConfig.fieldY + boardConfig.fieldHeight,
-    }),
-    [boardConfig.fieldX, boardConfig.fieldY, boardConfig.fieldWidth, boardConfig.fieldHeight],
-  );
+  const focusedBall = useMemo(() => {
+    if (!balls.length) {
+      return null;
+    }
+
+    return balls[0];
+  }, [balls]);
+
+  const possessionContext = useMemo(() => getBallPossessionContext(focusedBall ?? null), [focusedBall]);
+
+  const visibleRods = useMemo(() => {
+    if (!possessionContext) {
+      return rods;
+    }
+
+    const attackTeam = possessionContext.team;
+    const attackHighRods =
+      possessionContext.zone === 'goalkeeper' || possessionContext.zone === 'defense'
+        ? new Set<RodConfig['id']>(attackTeam === 'orange' ? ['P2_5', 'P2_3'] : ['P1_5', 'P1_3'])
+        : new Set<RodConfig['id']>();
+
+    return boardConfig.rods.reduce((accumulator, rod) => {
+      const baseState = rods[rod.id];
+      if (rod.id === possessionContext.rodId) {
+        accumulator[rod.id] = baseState;
+        return accumulator;
+      }
+
+      if (rod.team !== attackTeam) {
+        accumulator[rod.id] = { ...baseState, tilt: 'neutral' };
+        return accumulator;
+      }
+
+      if (attackHighRods.has(rod.id)) {
+        accumulator[rod.id] = { ...baseState, tilt: 'hochgestellt' };
+        return accumulator;
+      }
+
+      accumulator[rod.id] = { ...baseState, tilt: 'neutral' };
+      return accumulator;
+    }, {} as Record<RodConfig['id'], RodState>);
+  }, [possessionContext, rods]);
+
+  const getBallFallTarget = (point: Point): Point => {
+    const fieldBottom = boardConfig.fieldY + boardConfig.fieldHeight;
+    return {
+      x: point.x,
+      y: fieldBottom + boardConfig.ballRadius * 3,
+    };
+  };
 
   useEffect(() => {
     const applyHashScene = () => {
@@ -1005,10 +1097,7 @@ function App() {
       const point = pointFromEvent(event, svg, Boolean(isPortraitViewport));
 
       if (drag.kind === 'ball') {
-        setBall({
-          x: clamp(point.x - drag.offsetX, fieldBounds.left, fieldBounds.right),
-          y: clamp(point.y - drag.offsetY, fieldBounds.top, fieldBounds.bottom),
-        });
+        moveBall(drag.ballId, getDraggedBallPoint(point, drag));
       } else {
         const rodBounds = buildRodMotionBounds(drag.rodId);
         moveRod(drag.rodId, clamp(point.y - drag.offsetY, rodBounds.minY, rodBounds.maxY));
@@ -1021,6 +1110,43 @@ function App() {
         return;
       }
 
+      if (drag.kind === 'ball') {
+        const storeBalls = useBoardStore.getState().balls;
+        const point = pointFromEvent(event, svgRef.current, Boolean(isPortraitViewport));
+        const finalPoint = {
+          x: point.x,
+          y: point.y,
+        };
+        const placement = resolveBallDrop(finalPoint);
+
+        if (!placement) {
+          const fallTarget = getBallFallTarget(finalPoint);
+          if (fallTimerRef.current !== null) {
+            window.clearTimeout(fallTimerRef.current);
+          }
+
+          setFallingBallId(drag.ballId);
+          moveBall(drag.ballId, fallTarget);
+          fallTimerRef.current = window.setTimeout(() => {
+            removeBall(drag.ballId);
+            setFallingBallId((current) => (current === drag.ballId ? null : current));
+            fallTimerRef.current = null;
+          }, 180);
+        } else if (hasBallCollision(placement.point, storeBalls, drag.ballId)) {
+          if (drag.source === 'tray') {
+            removeBall(drag.ballId);
+          } else {
+            moveBall(drag.ballId, drag.origin);
+            setActiveBall(drag.ballId);
+          }
+        } else {
+          moveBall(drag.ballId, placement.point);
+          setActiveBall(drag.ballId);
+        }
+
+        setDraggingBallId(null);
+      }
+
       dragRef.current = null;
     };
 
@@ -1029,22 +1155,31 @@ function App() {
     window.addEventListener('pointercancel', handleUp);
 
     return () => {
+      if (fallTimerRef.current !== null) {
+        window.clearTimeout(fallTimerRef.current);
+        fallTimerRef.current = null;
+      }
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('pointercancel', handleUp);
     };
-  }, [fieldBounds, isPortraitViewport, moveRod, setBall]);
+  }, [isPortraitViewport, moveBall, moveRod, removeBall, setActiveBall]);
 
   const handleBoardPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    const point = pointFromEvent(event, svgRef.current, Boolean(isPortraitViewport));
-
-    if (activeTool === 'move') {
-      setBall({
-        x: clamp(point.x, fieldBounds.left, fieldBounds.right),
-        y: clamp(point.y, fieldBounds.top, fieldBounds.bottom),
-      });
+    if (dragRef.current?.kind === 'ball' && dragRef.current.pointerId === event.pointerId) {
       return;
     }
+
+    const target = event.target as Element | null;
+    if (target?.closest?.('[data-testid^="ball-"]')) {
+      return;
+    }
+
+    if (activeTool === 'move') {
+      return;
+    }
+
+    const point = pointFromEvent(event, svgRef.current, Boolean(isPortraitViewport));
 
     addShot({
       kind: activeTool === 'pass' ? 'pass' : 'shot',
@@ -1053,7 +1188,7 @@ function App() {
     });
   };
 
-  const startBallDrag = (event: React.PointerEvent<SVGCircleElement>) => {
+  const startBallDrag = (event: React.PointerEvent<SVGCircleElement>, ballId: string | null, origin: Point) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -1063,11 +1198,20 @@ function App() {
     }
 
     const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg, Boolean(isPortraitViewport));
+    const spawnPoint = origin;
+    const spawnedBallId = ballId ?? spawnBall(spawnPoint);
+    const offsetX = point.x - spawnPoint.x;
+    const offsetY = point.y - spawnPoint.y;
+    setActiveBall(spawnedBallId);
+    setDraggingBallId(spawnedBallId);
     dragRef.current = {
       kind: 'ball',
       pointerId: event.pointerId,
-      offsetX: point.x - ball.x,
-      offsetY: point.y - ball.y,
+      ballId: spawnedBallId,
+      source: ballId ? 'board' : 'tray',
+      offsetX,
+      offsetY,
+      origin: spawnPoint,
     };
   };
 
@@ -1101,7 +1245,6 @@ function App() {
     setShareLink(`${window.location.origin}${window.location.pathname}#${hash}`);
   };
 
-  const goalTop = boardConfig.centerY - boardConfig.goalWidth / 2;
   const liveFieldWidthCm = boardConfig.settings?.field.widthCm ?? tableDraft.fieldWidth;
   const liveGripLengthCm = boardConfig.settings?.configuration.gripLengthCm ?? 7;
   const liveGripWidthCm = boardConfig.settings?.configuration.gripWidthCm ?? 3;
@@ -1237,11 +1380,11 @@ function App() {
           <BoardCanvas
             svgRef={svgRef}
             isPortraitViewport={Boolean(isPortraitViewport)}
-            ball={ball}
-            showBall={false}
-            rods={rods}
+            balls={balls}
+            draggingBallId={draggingBallId}
+            fallingBallId={fallingBallId}
+            rods={visibleRods}
             savedFieldAsset={savedFieldAsset}
-            goalTop={goalTop}
             liveRodExtension={liveRodExtension}
             liveGripLength={liveGripLength}
             liveGripThickness={liveGripThickness}

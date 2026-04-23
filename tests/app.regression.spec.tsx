@@ -1,18 +1,22 @@
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../src/App';
 import defaultTableLayout from '../src/data/tableLayout.json';
-import { applyTableLayout, createDefaultScene } from '../src/boardConfig';
+import { applyTableLayout, boardConfig, createDefaultScene } from '../src/boardConfig';
+import { getBallTrayLayout } from '../src/lib/ballLayout';
+import { encodeScene } from '../src/geometry';
 import type { StoredTableLayout } from '../src/lib/tableLayout';
 import { useBoardStore } from '../src/store/boardStore';
 
 function resetBoardState() {
   applyTableLayout(JSON.parse(JSON.stringify(defaultTableLayout)) as StoredTableLayout);
+  window.location.hash = '';
   useBoardStore.setState({
     ...createDefaultScene(),
     activeTool: 'move',
+    activeBallId: null,
     snapshots: [],
   });
 }
@@ -30,6 +34,27 @@ function mockSvgLayout() {
   if (!svg) {
     throw new Error('SVG board not found');
   }
+
+  Object.defineProperty(svg, 'createSVGPoint', {
+    configurable: true,
+    value: () => ({
+      x: 0,
+      y: 0,
+      matrixTransform(matrix: { inverse?: () => unknown }) {
+        return {
+          x: this.x,
+          y: this.y,
+        };
+      },
+    }),
+  });
+
+  Object.defineProperty(svg, 'getScreenCTM', {
+    configurable: true,
+    value: () => ({
+      inverse: () => ({}),
+    }),
+  });
 
   Object.defineProperty(svg, 'getBoundingClientRect', {
     configurable: true,
@@ -76,6 +101,250 @@ describe('app regression coverage', () => {
     await waitFor(() => {
       expect(screen.queryByText('Schuss 1')).not.toBeInTheDocument();
     });
+  });
+
+  it('spawns a ball from the tray and removes it when dropped outside the table', async () => {
+    renderApp();
+    mockSvgLayout();
+
+    const trayLayout = getBallTrayLayout();
+    const leftTray = await screen.findByTestId('ball-tray-left');
+    const trayBall = leftTray.querySelector('circle');
+    if (!trayBall) {
+      throw new Error('Tray ball not found');
+    }
+
+    fireEvent.pointerDown(trayBall, {
+      clientX: trayLayout.trays[0].balls[0].point.x,
+      clientY: trayLayout.trays[0].balls[0].point.y,
+      pointerId: 11,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 11,
+    });
+    fireEvent.pointerUp(window, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 11,
+    });
+
+    expect(useBoardStore.getState().balls).toHaveLength(1);
+
+    const placedBall = document.querySelector('[data-testid^="ball-"]:not([data-testid^="ball-tray-"])') as SVGElement | null;
+    expect(placedBall).not.toBeNull();
+
+    if (!placedBall) {
+      throw new Error('Placed ball not found');
+    }
+
+    const placedBallCircle = placedBall.querySelector('circle');
+    if (!placedBallCircle) {
+      throw new Error('Placed ball circle not found');
+    }
+
+    fireEvent.pointerDown(placedBallCircle, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 12,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: -200,
+      clientY: -200,
+      pointerId: 12,
+    });
+    fireEvent.pointerUp(window, {
+      clientX: -200,
+      clientY: -200,
+      pointerId: 12,
+    });
+
+    await waitFor(() => {
+      expect(useBoardStore.getState().balls).toHaveLength(0);
+    });
+  });
+
+  it('keeps dragged balls inside the field and preserves the pointer offset', async () => {
+    renderApp();
+    mockSvgLayout();
+
+    const trayLayout = getBallTrayLayout();
+    const leftTray = await screen.findByTestId('ball-tray-left');
+    const trayBall = leftTray.querySelector('circle');
+    if (!trayBall) {
+      throw new Error('Tray ball not found');
+    }
+
+    const pointerOffset = { x: 10, y: 6 };
+
+    fireEvent.pointerDown(trayBall, {
+      clientX: trayLayout.trays[0].balls[0].point.x + pointerOffset.x,
+      clientY: trayLayout.trays[0].balls[0].point.y + pointerOffset.y,
+      pointerId: 13,
+    });
+
+    const safeStart = {
+      x: boardConfig.fieldX + boardConfig.ballRadius + 80,
+      y: boardConfig.fieldY + boardConfig.ballRadius + 80,
+    };
+
+    fireEvent.pointerMove(window, {
+      clientX: safeStart.x,
+      clientY: safeStart.y,
+      pointerId: 13,
+    });
+
+    const firstPosition = { ...useBoardStore.getState().balls[0] };
+
+    fireEvent.pointerMove(window, {
+      clientX: safeStart.x + 30,
+      clientY: safeStart.y,
+      pointerId: 13,
+    });
+
+    const secondPosition = useBoardStore.getState().balls[0];
+    expect(secondPosition.x - firstPosition.x).toBeCloseTo(30, 5);
+    expect(secondPosition.y - firstPosition.y).toBeCloseTo(0, 5);
+
+    fireEvent.pointerMove(window, {
+      clientX: safeStart.x + 30,
+      clientY: safeStart.y + 20,
+      pointerId: 13,
+    });
+
+    const thirdPosition = useBoardStore.getState().balls[0];
+    expect(thirdPosition.x - secondPosition.x).toBeCloseTo(0, 5);
+    expect(thirdPosition.y - secondPosition.y).toBeCloseTo(20, 5);
+
+    fireEvent.pointerUp(window, {
+      clientX: safeStart.x + 30,
+      clientY: safeStart.y + 20,
+      pointerId: 13,
+    });
+  });
+
+  it('sticks to the band before the ball escapes outside the field', async () => {
+    renderApp();
+    mockSvgLayout();
+
+    const trayLayout = getBallTrayLayout();
+    const leftTray = await screen.findByTestId('ball-tray-left');
+    const trayBall = leftTray.querySelector('circle');
+    if (!trayBall) {
+      throw new Error('Tray ball not found');
+    }
+
+    fireEvent.pointerDown(trayBall, {
+      clientX: trayLayout.trays[0].balls[0].point.x,
+      clientY: trayLayout.trays[0].balls[0].point.y,
+      pointerId: 14,
+    });
+
+    fireEvent.pointerMove(window, {
+      clientX: boardConfig.fieldX + boardConfig.ballRadius - 4,
+      clientY: boardConfig.centerY,
+      pointerId: 14,
+    });
+
+    expect(useBoardStore.getState().balls[0].x).toBeCloseTo(boardConfig.fieldX + boardConfig.ballRadius, 5);
+
+    fireEvent.pointerUp(window, {
+      clientX: boardConfig.fieldX + boardConfig.ballRadius - 4,
+      clientY: boardConfig.centerY,
+      pointerId: 14,
+    });
+
+    expect(useBoardStore.getState().balls).toHaveLength(1);
+    expect(useBoardStore.getState().balls[0].x).toBeCloseTo(boardConfig.fieldX, 5);
+
+    const bandBall = screen.getByTestId(`ball-${useBoardStore.getState().balls[0].id}`);
+    const bandBallCircle = bandBall.querySelector('circle');
+    if (!bandBallCircle) {
+      throw new Error('Band ball circle not found');
+    }
+
+    fireEvent.pointerDown(bandBallCircle, {
+      clientX: boardConfig.fieldX,
+      clientY: boardConfig.centerY,
+      pointerId: 15,
+    });
+
+    fireEvent.pointerMove(window, {
+      clientX: boardConfig.fieldX - 48,
+      clientY: boardConfig.centerY,
+      pointerId: 15,
+    });
+
+    expect(useBoardStore.getState().balls[0].x).toBeCloseTo(boardConfig.fieldX + boardConfig.ballRadius, 5);
+
+    fireEvent.pointerMove(window, {
+      clientX: boardConfig.fieldX - 160,
+      clientY: boardConfig.centerY,
+      pointerId: 15,
+    });
+
+    expect(useBoardStore.getState().balls[0].x).toBeLessThan(boardConfig.fieldX - 40);
+
+    fireEvent.pointerMove(window, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 15,
+    });
+
+    expect(useBoardStore.getState().balls[0].x).toBeGreaterThan(boardConfig.fieldX + boardConfig.ballRadius);
+
+    fireEvent.pointerUp(window, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 15,
+    });
+
+    expect(useBoardStore.getState().balls).toHaveLength(1);
+    expect(useBoardStore.getState().balls[0].x).toBeGreaterThan(boardConfig.fieldX + boardConfig.ballRadius);
+  });
+
+  it('uses only the first ball for possession-driven rod reactions', async () => {
+    const scene = createDefaultScene();
+    scene.balls = [
+      { id: 'first-ball', x: boardConfig.fieldX + 20, y: boardConfig.centerY },
+      { id: 'second-ball', x: boardConfig.fieldX + boardConfig.fieldWidth - 20, y: boardConfig.centerY },
+    ];
+    scene.ball = { x: boardConfig.fieldX + 20, y: boardConfig.centerY };
+    window.location.hash = `#scene=${encodeScene(scene)}`;
+    useBoardStore.setState({ activeBallId: 'second-ball' });
+
+    renderApp();
+
+    act(() => {
+      useBoardStore.getState().cycleRodTilt('P2_1');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rod-P2_3')).toHaveAttribute('data-tilt-state', 'hochgestellt');
+      expect(screen.getByTestId('rod-P2_5')).toHaveAttribute('data-tilt-state', 'hochgestellt');
+      expect(screen.getByTestId('rod-P1_3')).toHaveAttribute('data-tilt-state', 'neutral');
+      expect(screen.getByTestId('rod-P1_5')).toHaveAttribute('data-tilt-state', 'neutral');
+      expect(screen.getByTestId('rod-P2_1')).toHaveAttribute('data-tilt-state', 'front');
+    });
+  });
+
+  it('keeps all rods down when the first ball is on the attacking 5/3 line', () => {
+    const scene = createDefaultScene();
+    scene.balls = [{ id: 'first-ball', x: boardConfig.fieldX + 250, y: boardConfig.centerY }];
+    scene.ball = { x: boardConfig.fieldX + 250, y: boardConfig.centerY };
+    window.location.hash = `#scene=${encodeScene(scene)}`;
+
+    renderApp();
+
+    expect(screen.getByTestId('rod-P2_1')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P2_2')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P2_5')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P2_3')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P1_1')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P1_2')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P1_5')).toHaveAttribute('data-tilt-state', 'neutral');
+    expect(screen.getByTestId('rod-P1_3')).toHaveAttribute('data-tilt-state', 'neutral');
   });
 
   it('preserves the preview aspect ratio and opens the configuration wizard', async () => {

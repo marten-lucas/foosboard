@@ -294,3 +294,33 @@ body {
     height: 100%;
     display: block;
 }
+
+.foosboard-ball-tray {
+    pointer-events: auto;
+}
+
+.foosboard-ball-tray rect {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+}
+
+.foosboard-ball-tray text {
+    font-family: inherit;
+    text-transform: uppercase;
+}
+
+.foosboard-ball-token {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 140ms ease, filter 140ms ease, opacity 140ms ease;
+    will-change: transform, opacity;
+}
+
+.foosboard-ball-token--dragging {
+    transform: scale(1.12);
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.22));
+}
+
+.foosboard-ball-token--dropping {
+    opacity: 0.35;
+    pointer-events: none;
+}

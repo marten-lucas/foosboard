@@ -9,6 +9,7 @@ function resetBoardState() {
   useBoardStore.setState({
     ...createDefaultScene(),
     activeTool: 'move',
+    activeBallId: null,
     snapshots: [],
   });
 }
@@ -67,6 +68,20 @@ describe('board store', () => {
     expect(useBoardStore.getState().shots).toHaveLength(1);
   });
 
+  it('spawns, moves and removes balls', () => {
+    const { spawnBall, moveBall, removeBall } = useBoardStore.getState();
+
+    const ballId = spawnBall({ x: 200, y: 210 });
+    expect(useBoardStore.getState().balls).toHaveLength(1);
+    expect(useBoardStore.getState().activeBallId).toBe(ballId);
+
+    moveBall(ballId, { x: 240, y: 250 });
+    expect(useBoardStore.getState().balls[0]).toMatchObject({ id: ballId, x: 240, y: 250 });
+
+    removeBall(ballId);
+    expect(useBoardStore.getState().balls).toHaveLength(0);
+  });
+
   it('saves, loads and resets snapshots', () => {
     const store = useBoardStore.getState();
     store.setBall({ x: 250, y: 250 });
@@ -86,6 +101,7 @@ describe('board store', () => {
     const scene = getSerializableScene(useBoardStore.getState() as never);
 
     expect(scene).toHaveProperty('ball');
+    expect(scene).toHaveProperty('balls');
     expect(scene).toHaveProperty('rods');
     expect(scene).not.toHaveProperty('snapshots');
     expect(scene).not.toHaveProperty('activeTool');

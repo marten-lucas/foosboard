@@ -74,6 +74,10 @@ export interface BallState {
   y: number;
 }
 
+export interface BallTokenState extends BallState {
+  id: string;
+}
+
 export interface RodState {
   y: number;
   tilt: TiltMode;
@@ -96,6 +100,7 @@ export interface SavedScene {
 
 export interface SerializableScene {
   ball: BallState;
+  balls: BallTokenState[];
   rods: Record<RodId, RodState>;
   shots: ShotLine[];
   guidesVisible: boolean;
@@ -181,6 +186,7 @@ export function createDefaultScene(): SerializableScene {
       x: boardConfig.centerX,
       y: boardConfig.centerY,
     },
+    balls: [],
     rods: createDefaultRodStates(),
     shots: [],
     guidesVisible: true,

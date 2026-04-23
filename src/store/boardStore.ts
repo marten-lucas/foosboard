@@ -4,6 +4,7 @@ import {
   boardConfig,
   createDefaultScene,
   type BallState,
+  type BallTokenState,
   type RodId,
   type RodState,
   type SavedScene,
@@ -18,8 +19,13 @@ export type ToolMode = 'move' | 'shot' | 'pass';
 
 interface BoardStore extends SerializableScene {
   activeTool: ToolMode;
+  activeBallId: string | null;
   snapshots: SavedScene[];
   setBall: (point: BallState) => void;
+  spawnBall: (point: BallState) => string;
+  moveBall: (ballId: string, point: BallState) => void;
+  removeBall: (ballId: string) => void;
+  setActiveBall: (ballId: string | null) => void;
   moveRod: (rodId: RodId, y: number) => void;
   cycleRodTilt: (rodId: RodId) => void;
   addShot: (shot: Omit<ShotLine, 'id' | 'label'>) => void;
@@ -53,6 +59,28 @@ function createSceneFromDefaults(): SerializableScene {
   return createDefaultScene();
 }
 
+function normalizeBallTokens(balls: SerializableScene['balls'] | undefined, legacyBall: BallState | undefined): BallTokenState[] {
+  if (balls !== undefined) {
+    return balls.map((ball) => ({
+      id: ball.id,
+      x: ball.x,
+      y: ball.y,
+    }));
+  }
+
+  if (legacyBall) {
+    return [
+      {
+        id: createId('ball'),
+        x: legacyBall.x,
+        y: legacyBall.y,
+      },
+    ];
+  }
+
+  return [];
+}
+
 function cycleTiltValue(currentTilt: RodState['tilt']): RodState['tilt'] {
   switch (currentTilt) {
     case 'neutral':
@@ -78,8 +106,12 @@ function normalizeRodStates(rods: SerializableScene['rods']): SerializableScene[
 }
 
 function normalizeScene(scene: Partial<SerializableScene>): Partial<SerializableScene> {
+  const balls = normalizeBallTokens(scene.balls, scene.ball);
+
   return {
     ...scene,
+    ball: scene.ball ?? balls[0] ?? createDefaultScene().ball,
+    balls,
     rods: scene.rods ? normalizeRodStates(scene.rods as SerializableScene['rods']) : scene.rods,
   };
 }
@@ -96,6 +128,7 @@ export const useBoardStore = create<BoardStore>()(
     (set, get) => ({
       ...createSceneFromDefaults(),
       activeTool: 'move',
+      activeBallId: null,
       snapshots: [],
       setBall: (point) =>
         set(() => ({
@@ -104,6 +137,52 @@ export const useBoardStore = create<BoardStore>()(
             y: clamp(point.y, boardConfig.fieldY + boardConfig.ballRadius, boardConfig.fieldY + boardConfig.fieldHeight - boardConfig.ballRadius),
           },
         })),
+      spawnBall: (point) => {
+        const ballId = createId('ball');
+
+        set(() => ({
+          balls: [
+            ...get().balls,
+            {
+              id: ballId,
+              x: point.x,
+              y: point.y,
+            },
+          ],
+          ball: {
+            x: point.x,
+            y: point.y,
+          },
+          activeBallId: ballId,
+        }));
+
+        return ballId;
+      },
+      moveBall: (ballId, point) =>
+        set((state) => ({
+          balls: state.balls.map((ball) =>
+            ball.id === ballId
+              ? {
+                  ...ball,
+                  x: point.x,
+                  y: point.y,
+                }
+              : ball,
+          ),
+          ball: state.activeBallId === ballId ? { x: point.x, y: point.y } : state.ball,
+        })),
+      removeBall: (ballId) =>
+        set((state) => {
+          const remainingBalls = state.balls.filter((ball) => ball.id !== ballId);
+          const nextBall = remainingBalls[remainingBalls.length - 1];
+
+          return {
+            balls: remainingBalls,
+            ball: nextBall ? { x: nextBall.x, y: nextBall.y } : createDefaultScene().ball,
+            activeBallId: state.activeBallId === ballId ? nextBall?.id ?? null : state.activeBallId,
+          };
+        }),
+      setActiveBall: (ballId) => set(() => ({ activeBallId: ballId })),
       moveRod: (rodId, y) =>
         set((state) => ({
           rods: {
@@ -177,6 +256,7 @@ export const useBoardStore = create<BoardStore>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         ball: state.ball,
+        balls: state.balls,
         rods: state.rods,
         shots: state.shots,
         guidesVisible: state.guidesVisible,
@@ -189,11 +269,12 @@ export const useBoardStore = create<BoardStore>()(
 
         return {
           ...state,
+          balls: normalizeBallTokens(state?.balls, state?.ball),
           rods: state?.rods ? normalizeRodStates(state.rods) : state?.rods,
           snapshots: state?.snapshots?.map(normalizeSavedScene),
         };
       },
-      version: 2,
+      version: 3,
     },
   ),
 );
@@ -201,6 +282,7 @@ export const useBoardStore = create<BoardStore>()(
 export function getSerializableScene(state: BoardStore): SerializableScene {
   return {
     ball: state.ball,
+    balls: state.balls,
     rods: state.rods,
     shots: state.shots,
     guidesVisible: state.guidesVisible,
