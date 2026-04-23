@@ -145,6 +145,9 @@ describe('app regression coverage', () => {
     expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('nachHinten');
 
     await user.click(rodToggle);
+    expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('hochgestellt');
+
+    await user.click(rodToggle);
     expect(rodPreviewSvg.getAttribute('data-tilt-state')).toBe('unten');
     expect(screen.queryByText('Puppe mit Stange')).not.toBeInTheDocument();
   });

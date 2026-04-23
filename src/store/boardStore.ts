@@ -9,6 +9,7 @@ import {
   type SavedScene,
   type SerializableScene,
   type ShotLine,
+  normalizeTiltMode,
 } from '../boardConfig';
 import { clamp, createId } from '../geometry';
 import { buildRodMotionBounds } from '../lib/rodLayout';
@@ -58,9 +59,36 @@ function cycleTiltValue(currentTilt: RodState['tilt']): RodState['tilt'] {
       return 'front';
     case 'front':
       return 'back';
+    case 'back':
+      return 'hochgestellt';
     default:
       return 'neutral';
   }
+}
+
+function normalizeRodStates(rods: SerializableScene['rods']): SerializableScene['rods'] {
+  return boardConfig.rods.reduce((accumulator, rod) => {
+    const currentRod = rods[rod.id];
+    accumulator[rod.id] = {
+      y: currentRod?.y ?? rod.defaultY,
+      tilt: normalizeTiltMode(currentRod?.tilt),
+    };
+    return accumulator;
+  }, {} as SerializableScene['rods']);
+}
+
+function normalizeScene(scene: Partial<SerializableScene>): Partial<SerializableScene> {
+  return {
+    ...scene,
+    rods: scene.rods ? normalizeRodStates(scene.rods as SerializableScene['rods']) : scene.rods,
+  };
+}
+
+function normalizeSavedScene(snapshot: SavedScene): SavedScene {
+  return {
+    ...snapshot,
+    scene: normalizeScene(snapshot.scene) as SerializableScene,
+  };
 }
 
 export const useBoardStore = create<BoardStore>()(
@@ -130,7 +158,7 @@ export const useBoardStore = create<BoardStore>()(
         }
 
         set(() => ({
-          ...snapshot.scene,
+          ...normalizeScene(snapshot.scene),
         }));
       },
       deleteSnapshot: (snapshotId) =>
@@ -141,7 +169,7 @@ export const useBoardStore = create<BoardStore>()(
       hydrateScene: (scene) =>
         set((state) => ({
           ...state,
-          ...scene,
+          ...normalizeScene(scene),
         })),
     }),
     {
@@ -154,9 +182,18 @@ export const useBoardStore = create<BoardStore>()(
         guidesVisible: state.guidesVisible,
         fiveGoalPositions: state.fiveGoalPositions,
         activeShotColor: state.activeShotColor,
-        snapshots: state.snapshots,
+        snapshots: state.snapshots.map(normalizeSavedScene),
       }),
-      version: 1,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<BoardStore> | undefined;
+
+        return {
+          ...state,
+          rods: state?.rods ? normalizeRodStates(state.rods) : state?.rods,
+          snapshots: state?.snapshots?.map(normalizeSavedScene),
+        };
+      },
+      version: 2,
     },
   ),
 );

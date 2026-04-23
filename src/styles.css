@@ -39,16 +39,40 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 40px 28px 36px;
+    padding: 28px 24px;
     overflow: visible;
+    transition: padding 220ms ease;
 }
 
 .foosboard-board-svg {
-    width: min(100%, 860px);
+    width: min(100%, 980px);
     height: auto;
-    max-height: calc(100vh - 240px);
+    max-height: calc(100vh - 200px);
     display: block;
     overflow: visible;
+    transform: rotate(0deg);
+    transform-origin: center;
+    transition: transform 220ms ease, width 220ms ease, max-height 220ms ease, max-width 220ms ease;
+}
+
+.foosboard-board-wrap--portrait {
+    padding: 24px;
+}
+
+.foosboard-board-svg--portrait {
+    width: min(calc(100vh - 220px), 760px);
+    max-width: calc(100vh - 220px);
+    max-height: none;
+    transform: rotate(90deg) scale(0.83);
+    transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .foosboard-board-wrap,
+    .foosboard-board-svg {
+        transition: none;
+    }
 }
 
 .foosboard-hidden-ui {

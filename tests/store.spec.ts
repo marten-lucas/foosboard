@@ -27,7 +27,7 @@ describe('board store', () => {
     expect(state.ball.y).toBeLessThanOrEqual(boardConfig.fieldY + boardConfig.fieldHeight - boardConfig.ballRadius);
   });
 
-  it('cycles rod tilt through neutral, front, back and back to neutral', () => {
+  it('cycles rod tilt through neutral, front, back, hochgestellt and back to neutral', () => {
     const { cycleRodTilt } = useBoardStore.getState();
 
     cycleRodTilt('P2_1');
@@ -37,7 +37,19 @@ describe('board store', () => {
     expect(useBoardStore.getState().rods.P2_1.tilt).toBe('back');
 
     cycleRodTilt('P2_1');
+    expect(useBoardStore.getState().rods.P2_1.tilt).toBe('hochgestellt');
+
+    cycleRodTilt('P2_1');
     expect(useBoardStore.getState().rods.P2_1.tilt).toBe('neutral');
+  });
+
+  it('keeps legacy back tilt as back on hydration', () => {
+    const scene = createDefaultScene();
+    scene.rods.P2_1.tilt = 'back' as never;
+
+    useBoardStore.getState().hydrateScene(scene as never);
+
+    expect(useBoardStore.getState().rods.P2_1.tilt).toBe('back');
   });
 
   it('adds and removes shot lines with stable labels', () => {

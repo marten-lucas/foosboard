@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { buildFigureRenderMetrics, buildRodStrokeWidth, type PreviewFigureState } from '../lib/figureRenderModel';
+import {
+  buildFigureRenderMetrics,
+  buildRodStrokeWidth,
+  resolveFigurePreviewTiltState,
+  type FigurePreviewTiltState,
+  type PreviewFigureState,
+} from '../lib/figureRenderModel';
 
 export type FigurePreviewState = PreviewFigureState;
-
-type FigurePreviewTiltState = 'unten' | 'nachVorn' | 'nachHinten';
 
 type FigureRodPreviewProps = {
   testId: string;
@@ -36,7 +40,7 @@ export function FigureRodPreview({
   const rodX = viewWidth / 2;
   const rodTop = 0;
   const rodBottom = viewHeight;
-  const activeFigure = figureStates[tiltState];
+  const activeFigure = figureStates[resolveFigurePreviewTiltState(tiltState)];
   const figureMarkup = activeFigure.markup;
 
   const cycleTiltState = () => {
@@ -46,6 +50,9 @@ export function FigureRodPreview({
       }
       if (current === 'nachVorn') {
         return 'nachHinten';
+      }
+      if (current === 'nachHinten') {
+        return 'hochgestellt';
       }
       return 'unten';
     });
@@ -65,6 +72,7 @@ export function FigureRodPreview({
   const scaledFigureWidth = figureMetrics.width;
   const scaledFigureHeight = figureMetrics.height;
   const anchor = figureMetrics.anchor || { x: 0.5, y: 0.5 };
+  const figureOpacity = tiltState === 'nachHinten' || tiltState === 'hochgestellt' ? 0.5 : 1;
   const figureCenterY = 20;
   const ballRadius = Math.max((ballSizeCm * (mountWidthTarget / Math.max(figureWidthCm, 1))) / 2, 2.6);
   const rodStrokeWidth = buildRodStrokeWidth({
@@ -88,6 +96,7 @@ export function FigureRodPreview({
             y={figureCenterY - scaledFigureHeight * anchor.y}
             width={scaledFigureWidth}
             height={scaledFigureHeight}
+            style={{ opacity: figureOpacity }}
           >
             <div
               xmlns="http://www.w3.org/1999/xhtml"

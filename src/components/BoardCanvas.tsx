@@ -1,7 +1,9 @@
 import type { RefObject } from 'react';
-import { boardConfig, type BallState, type RodConfig, type RodState } from '../boardConfig';
+import { boardConfig, normalizeTiltMode, type BallState, type RodConfig, type RodState } from '../boardConfig';
 import { defaultTableDraft } from '../lib/tableLayout';
 import { getRodGeometry, getRodRowKey } from '../lib/rodLayout';
+import { buildTableSurfaceGeometry, TABLE_FRAME_THICKNESS_CM } from '../lib/tableSurface';
+import { TableGoalVisuals } from './TableGoalVisuals';
 import { SharedVisualDefs } from './SharedVisualDefs';
 import { buildCenteredOffsets } from '../lib/rowFigureLayout';
 
@@ -17,13 +19,17 @@ type LiveFigureState = {
   };
 };
 
+function getFigureForeignObjectX(width: number, anchorX: number, mirrored: boolean) {
+  return -width * (mirrored ? 1 - anchorX : anchorX);
+}
+
 type BoardCanvasProps = {
   svgRef: RefObject<SVGSVGElement | null>;
+  isPortraitViewport: boolean;
   ball: BallState;
   showBall?: boolean;
   rods: Record<RodConfig['id'], RodState>;
   savedFieldAsset: string;
-  goalTop: number;
   liveRodExtension: number;
   liveGripLength: number;
   liveGripThickness: number;
@@ -33,15 +39,18 @@ type BoardCanvasProps = {
   onBoardPointerDown: (event: React.PointerEvent<SVGSVGElement>) => void;
   onStartBallDrag: (event: React.PointerEvent<SVGCircleElement>) => void;
   onStartRodDrag: (rodId: RodConfig['id'], event: React.PointerEvent<SVGRectElement>) => void;
+  onNudgeRod: (rodId: RodConfig['id'], direction: 'towards-top' | 'towards-bottom') => void;
   onCycleRodTilt: (rodId: RodConfig['id']) => void;
 };
 
 function getFigureStateKey(tilt: RodState['tilt']): FigureStateKey {
-  if (tilt === 'front') {
+  const normalizedTilt = normalizeTiltMode(tilt);
+
+  if (normalizedTilt === 'front') {
     return 'nachVorn';
   }
 
-  if (tilt === 'back') {
+  if (normalizedTilt === 'back' || normalizedTilt === 'hochgestellt') {
     return 'nachHinten';
   }
 
@@ -58,11 +67,11 @@ function getRodOffsets(rod: RodConfig): number[] {
 
 export function BoardCanvas({
   svgRef,
+  isPortraitViewport,
   ball,
   showBall = true,
   rods,
   savedFieldAsset,
-  goalTop,
   liveRodExtension,
   liveGripLength,
   liveGripThickness,
@@ -72,23 +81,35 @@ export function BoardCanvas({
   onBoardPointerDown,
   onStartBallDrag,
   onStartRodDrag,
+  onNudgeRod,
   onCycleRodTilt,
 }: BoardCanvasProps) {
   const fieldWidthCm = boardConfig.settings?.field.widthCm ?? defaultTableDraft.fieldWidth;
+  const tableSurface = buildTableSurfaceGeometry({
+    fieldX: boardConfig.fieldX,
+    fieldY: boardConfig.fieldY,
+    fieldWidth: boardConfig.fieldWidth,
+    fieldHeight: boardConfig.fieldHeight,
+    fieldWidthCm,
+    frameThicknessCm: TABLE_FRAME_THICKNESS_CM,
+    goalWidth: boardConfig.goalWidth,
+    goalDepth: boardConfig.goalDepth,
+  });
 
   return (
-    <div className="foosboard-board-wrap">
+    <div className={`foosboard-board-wrap${isPortraitViewport ? ' foosboard-board-wrap--portrait' : ''}`}>
       <svg
         ref={svgRef}
         data-testid="board-svg"
         aria-label="Foosboard Spielfeld"
-        className="foosboard-board-svg"
+        className={`foosboard-board-svg${isPortraitViewport ? ' foosboard-board-svg--portrait' : ''}`}
         viewBox={`0 0 ${boardConfig.width} ${boardConfig.height}`}
         preserveAspectRatio="xMidYMid meet"
         onPointerDown={onBoardPointerDown}
         style={{ touchAction: 'none' }}
         data-field-height={boardConfig.fieldHeight}
         data-rod-extension={liveRodExtension}
+        data-portrait-viewport={isPortraitViewport ? 'true' : 'false'}
       >
         <defs>
           <SharedVisualDefs />
@@ -100,11 +121,6 @@ export function BoardCanvas({
             <div className="foosboard-live-field-asset" dangerouslySetInnerHTML={{ __html: savedFieldAsset }} />
           </foreignObject>
         ) : null}
-        <g>
-          <rect x={boardConfig.fieldX - boardConfig.goalDepth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
-          <rect x={boardConfig.fieldX + boardConfig.fieldWidth} y={goalTop} width={boardConfig.goalDepth} height={boardConfig.goalWidth} fill={boardConfig.colors.fieldLine} />
-        </g>
-
         {boardConfig.rods.map((rod) => {
           const rodState = rods[rod.id];
           const rowKey = getRodRowKey(rod.id);
@@ -113,8 +129,16 @@ export function BoardCanvas({
           const rodHeight = boardConfig.fieldHeight + rodGeometry.rodExtension * 2;
           const rodTop = rodState.y - rodHeight / 2;
           const rodBottom = rodState.y + rodHeight / 2;
+          const gripLength = Math.min(rodGeometry.rodExtension, liveGripLength);
           const rodCapWidth = Math.max(rodGeometry.rodStrokeWidth * 1.55, 9);
           const rodCapHeight = Math.max(rodGeometry.rodStrokeWidth * 0.45, 3.2);
+          const nudgeHitWidth = Math.max(liveGripThickness * 1.4, rodGeometry.rodStrokeWidth * 6, 16);
+          const topExposedEnd = tableSurface.frame.y;
+          const bottomExposedStart = tableSurface.frame.y + tableSurface.frame.height;
+          const topNudgeY = rod.team === 'blue' ? rodTop + gripLength : rodTop;
+          const topNudgeHeight = Math.max(topExposedEnd - topNudgeY, 0);
+          const bottomNudgeEnd = rod.team === 'orange' ? rodBottom - gripLength : rodBottom;
+          const bottomNudgeHeight = Math.max(bottomNudgeEnd - bottomExposedStart, 0);
 
           return (
             <g
@@ -153,41 +177,81 @@ export function BoardCanvas({
               {/* Griff */}
               <rect
                 x={-liveGripThickness / 2}
-                y={rod.team === 'orange' ? rodBottom - Math.min(rodGeometry.rodExtension, liveGripLength) : rodTop}
+                y={rod.team === 'orange' ? rodBottom - gripLength : rodTop}
                 width={liveGripThickness}
-                height={Math.min(rodGeometry.rodExtension, liveGripLength)}
+                height={gripLength}
                 rx={liveGripThickness / 4}
                 fill="url(#gripGradient)"
                 stroke="rgba(0,0,0,0.25)"
                 strokeWidth="0.4"
                 onPointerDown={(event) => onStartRodDrag(rod.id, event)}
-                cursor="ns-resize"
+                cursor={isPortraitViewport ? 'ew-resize' : 'ns-resize'}
               />
+              {topNudgeHeight > 0 ? (
+                <rect
+                  data-testid={`rod-${rod.id}-nudge-top`}
+                  x={-nudgeHitWidth / 2}
+                  y={topNudgeY}
+                  width={nudgeHitWidth}
+                  height={topNudgeHeight}
+                  fill="transparent"
+                  cursor={isPortraitViewport ? 'ew-resize' : 'ns-resize'}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNudgeRod(rod.id, 'towards-top');
+                  }}
+                />
+              ) : null}
+              {bottomNudgeHeight > 0 ? (
+                <rect
+                  data-testid={`rod-${rod.id}-nudge-bottom`}
+                  x={-nudgeHitWidth / 2}
+                  y={bottomExposedStart}
+                  width={nudgeHitWidth}
+                  height={bottomNudgeHeight}
+                  fill="transparent"
+                  cursor={isPortraitViewport ? 'ew-resize' : 'ns-resize'}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNudgeRod(rod.id, 'towards-bottom');
+                  }}
+                />
+              ) : null}
 
               <g transform={`translate(0 ${rodState.y})`}>
                 {offsets.map((offset, index) => {
                   const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
+                  const figureOpacity = normalizeTiltMode(rodState.tilt) === 'hochgestellt' ? 0.5 : 1;
+                  const handleFigureToggle = (event: React.SyntheticEvent) => {
+                    event.stopPropagation();
+                    onCycleRodTilt(rod.id);
+                  };
 
                   return (
-                    <g
-                      key={`${rod.id}-${index}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onCycleRodTilt(rod.id);
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    >
+                    <g key={`${rod.id}-${index}`} style={{ cursor: 'pointer' }}>
                       {figureState.markup ? (
                         <foreignObject
-                          x={-figureState.width * figureState.anchor.x}
+                          x={getFigureForeignObjectX(figureState.width, figureState.anchor.x, rod.team === 'blue')}
                           y={offset - figureState.height * figureState.anchor.y}
                           width={figureState.width}
                           height={figureState.height}
+                          style={{ pointerEvents: 'auto', opacity: figureOpacity }}
+                          onClick={handleFigureToggle}
                         >
                           <div
                             xmlns="http://www.w3.org/1999/xhtml"
                             className={`foosboard-figure-svg-colorized${rod.team === 'blue' ? ' foosboard-figure-svg-colorized--mirrored' : ''}`}
-                            style={{ color: rod.figureColor }}
+                            style={{ color: rod.figureColor, pointerEvents: 'none' }}
                             dangerouslySetInnerHTML={{ __html: figureState.markup }}
                           />
                         </foreignObject>
@@ -202,15 +266,18 @@ export function BoardCanvas({
 
         {/* Rahmen liegt bewusst über den Stangen */}
         <rect
-          x={boardConfig.frameX}
-          y={boardConfig.frameY}
-          width={boardConfig.frameWidth}
-          height={boardConfig.frameHeight}
+          data-testid="board-frame"
+          x={tableSurface.frame.x}
+          y={tableSurface.frame.y}
+          width={tableSurface.frame.width}
+          height={tableSurface.frame.height}
           fill="none"
           stroke="#111"
-          strokeWidth={5}
+          strokeWidth={tableSurface.frame.strokeWidth}
           style={{ pointerEvents: 'none' }}
         />
+
+        <TableGoalVisuals goals={tableSurface.goals} />
 
         {showBall ? (
           <g>

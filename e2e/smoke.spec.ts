@@ -1,10 +1,8 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 const fieldSvgPath = path.resolve(process.cwd(), 'testdata/foosball_table_p4p_field.svg');
 const playerSvgPath = path.resolve(process.cwd(), 'testdata/foosball_table_player.svg');
-const startupTargetPath = path.resolve(process.cwd(), 'testdata/AppStart_Target.png');
 
 async function expectContained(locator: Parameters<typeof test>[1] extends never ? never : any) {
   const metrics = await locator.evaluate((element: HTMLElement) => {
@@ -29,124 +27,30 @@ async function expectContained(locator: Parameters<typeof test>[1] extends never
   expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
 }
 
-async function expectStartupBoardMatchesReference(page: import('@playwright/test').Page) {
-  const expectedBuffer = fs.readFileSync(startupTargetPath);
-  const actualBuffer = await page.screenshot({ fullPage: false, animations: 'disabled' });
-
-  const comparison = await page.evaluate(async ({ actualBase64, expectedBase64 }) => {
-    const loadImage = (src: string) =>
-      new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error(`Failed to load image: ${src.slice(0, 32)}`));
-        image.src = src;
-      });
-
-    const getImageData = (image: HTMLImageElement) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = image.width;
-      canvas.height = image.height;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        throw new Error('Missing canvas context');
-      }
-
-      context.drawImage(image, 0, 0);
-      return context.getImageData(0, 0, image.width, image.height).data;
-    };
-
-    const findFieldBounds = (data: Uint8ClampedArray, width: number, height: number) => {
-      let minX = width;
-      let minY = height;
-      let maxX = 0;
-      let maxY = 0;
-
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          const index = (y * width + x) * 4;
-          const r = data[index];
-          const g = data[index + 1];
-          const b = data[index + 2];
-          const a = data[index + 3];
-
-          if (a > 200 && g > 160 && r < 100 && b < 100) {
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-          }
-        }
-      }
-
-      return {
-        minX,
-        minY,
-        maxX,
-        maxY,
-        width: Math.max(maxX - minX + 1, 1),
-        height: Math.max(maxY - minY + 1, 1),
-      };
-    };
-
-    const [actualImage, expectedImage] = await Promise.all([
-      loadImage(`data:image/png;base64,${actualBase64}`),
-      loadImage(`data:image/png;base64,${expectedBase64}`),
-    ]);
-
-    const actualData = getImageData(actualImage);
-    const expectedData = getImageData(expectedImage);
-    const actualBounds = findFieldBounds(actualData, actualImage.width, actualImage.height);
-    const expectedBounds = findFieldBounds(expectedData, expectedImage.width, expectedImage.height);
-    const cropWidth = Math.min(actualBounds.width, expectedBounds.width);
-    const cropHeight = Math.min(actualBounds.height, expectedBounds.height);
-    const canvas = document.createElement('canvas');
-    canvas.width = cropWidth;
-    canvas.height = cropHeight;
-    const context = canvas.getContext('2d');
-
-    if (!context) {
-      throw new Error('Missing comparison context');
-    }
-
-    context.drawImage(actualImage, actualBounds.minX, actualBounds.minY, actualBounds.width, actualBounds.height, 0, 0, cropWidth, cropHeight);
-    const croppedActual = context.getImageData(0, 0, cropWidth, cropHeight).data;
-    context.clearRect(0, 0, cropWidth, cropHeight);
-    context.drawImage(expectedImage, expectedBounds.minX, expectedBounds.minY, expectedBounds.width, expectedBounds.height, 0, 0, cropWidth, cropHeight);
-    const croppedExpected = context.getImageData(0, 0, cropWidth, cropHeight).data;
-
-    let differentPixels = 0;
-    for (let index = 0; index < croppedActual.length; index += 4) {
-      const delta =
-        Math.abs(croppedActual[index] - croppedExpected[index]) +
-        Math.abs(croppedActual[index + 1] - croppedExpected[index + 1]) +
-        Math.abs(croppedActual[index + 2] - croppedExpected[index + 2]) +
-        Math.abs(croppedActual[index + 3] - croppedExpected[index + 3]);
-
-      if (delta > 40) {
-        differentPixels += 1;
-      }
-    }
+async function expectLandscapeStartupBoard(page: import('@playwright/test').Page) {
+  const metrics = await page.evaluate(() => {
+    const board = document.querySelector('[data-testid="board-svg"]') as SVGSVGElement | null;
+    const stage = document.querySelector('.foosboard-stage') as HTMLElement | null;
+    const boardBox = board?.getBoundingClientRect();
+    const stageBox = stage?.getBoundingClientRect();
 
     return {
-      actualBounds,
-      expectedBounds,
-      actualImage: { width: actualImage.width, height: actualImage.height },
-      expectedImage: { width: expectedImage.width, height: expectedImage.height },
-      diffRatio: differentPixels / Math.max(cropWidth * cropHeight, 1),
+      portraitFlag: board?.getAttribute('data-portrait-viewport') || 'true',
+      boardWidthRatio: boardBox && stageBox ? boardBox.width / stageBox.width : 0,
+      boardHeightRatio: boardBox && stageBox ? boardBox.height / stageBox.height : 0,
+      topGap: boardBox && stageBox ? boardBox.top - stageBox.top : 0,
+      bottomGap: boardBox && stageBox ? stageBox.bottom - boardBox.bottom : 0,
     };
-  }, {
-    actualBase64: actualBuffer.toString('base64'),
-    expectedBase64: expectedBuffer.toString('base64'),
   });
 
-  const actualWidthRatio = comparison.actualBounds.width / Math.max(comparison.actualImage.width, 1);
-  const expectedWidthRatio = comparison.expectedBounds.width / Math.max(comparison.expectedImage.width, 1);
-  const actualHeightRatio = comparison.actualBounds.height / Math.max(comparison.actualImage.height, 1);
-  const expectedHeightRatio = comparison.expectedBounds.height / Math.max(comparison.expectedImage.height, 1);
-
-  expect(comparison.diffRatio).toBeLessThan(0.25);
-  expect(Math.abs(actualWidthRatio - expectedWidthRatio)).toBeLessThanOrEqual(0.28);
-  expect(Math.abs(actualHeightRatio - expectedHeightRatio)).toBeLessThanOrEqual(0.28);
+  expect(metrics.portraitFlag).toBe('false');
+  expect(metrics.boardWidthRatio).toBeGreaterThan(0.55);
+  expect(metrics.boardWidthRatio).toBeLessThan(0.8);
+  expect(metrics.boardHeightRatio).toBeGreaterThan(0.6);
+  expect(metrics.boardHeightRatio).toBeLessThan(0.86);
+  expect(Math.max(metrics.boardWidthRatio, metrics.boardHeightRatio)).toBeGreaterThan(0.72);
+  expect(metrics.topGap).toBeGreaterThan(60);
+  expect(metrics.bottomGap).toBeGreaterThan(60);
 }
 
 async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
@@ -181,7 +85,19 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
       return fill.includes('gripgradient') && width >= 10 && height >= 20 && isVisible(rect);
     }).length;
 
-    const transparentDragZones = Array.from(board.querySelectorAll('[data-testid^="rod-"] rect')).filter((rect) => (rect.getAttribute('fill') || '').toLowerCase() === 'transparent').length;
+    const transparentFieldBlockingZones = Array.from(board.querySelectorAll('[data-testid^="rod-"] rect')).filter((rect) => {
+      if ((rect.getAttribute('fill') || '').toLowerCase() !== 'transparent') {
+        return false;
+      }
+
+      if (!fieldAsset) {
+        return isVisible(rect);
+      }
+
+      const rectBox = rect.getBoundingClientRect();
+      const fieldBox = fieldAsset.getBoundingClientRect();
+      return rectBox.right > fieldBox.left && rectBox.left < fieldBox.right && rectBox.bottom > fieldBox.top && rectBox.top < fieldBox.bottom;
+    }).length;
 
     const figures = Array.from(board.querySelectorAll('foreignObject')).filter(isVisible);
     const figureCount = figures.length;
@@ -193,7 +109,7 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
       goalCount,
       rodCount,
       gripCount,
-      transparentDragZones,
+      transparentFieldBlockingZones,
       figureCount,
       maxFigureWidth,
       ballVisible,
@@ -205,10 +121,29 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
   expect(metrics?.goalCount).toBeGreaterThanOrEqual(2);
   expect(metrics?.rodCount).toBeGreaterThanOrEqual(8);
   expect(metrics?.gripCount).toBeGreaterThanOrEqual(8);
-  expect(metrics?.transparentDragZones).toBe(0);
+  expect(metrics?.transparentFieldBlockingZones).toBe(0);
   expect(metrics?.figureCount).toBeGreaterThanOrEqual(22);
   expect(metrics?.maxFigureWidth).toBeGreaterThanOrEqual(15);
   expect(metrics?.ballVisible).toBeFalsy();
+}
+
+async function expectPortraitStartupBoard(page: import('@playwright/test').Page) {
+  const metrics = await page.evaluate(() => {
+    const board = document.querySelector('[data-testid="board-svg"]') as SVGSVGElement | null;
+    const stage = document.querySelector('.foosboard-stage') as HTMLElement | null;
+    const boardBox = board?.getBoundingClientRect();
+    const stageBox = stage?.getBoundingClientRect();
+
+    return {
+      portraitFlag: board?.getAttribute('data-portrait-viewport') || 'false',
+      topGap: boardBox && stageBox ? boardBox.top - stageBox.top : 0,
+      bottomGap: boardBox && stageBox ? stageBox.bottom - boardBox.bottom : 0,
+    };
+  });
+
+  expect(metrics.portraitFlag).toBe('true');
+  expect(metrics.topGap).toBeGreaterThan(40);
+  expect(metrics.bottomGap).toBeGreaterThan(40);
 }
 
 test('smoke: app loads and table previews stay stable', async ({ page }) => {
@@ -231,12 +166,15 @@ test('smoke: app loads and table previews stay stable', async ({ page }) => {
   await expect(page.getByText('Foosboard')).toHaveCount(1);
   await expect(page.locator('.foosboard-live-field-asset svg').first()).toBeVisible();
   await expectJsonStartupBoard(page);
-  await expectStartupBoardMatchesReference(page);
+  await expectPortraitStartupBoard(page);
 
   const staleLayoutAfterLoad = await page.evaluate(() => window.localStorage.getItem('foosboard.tableLayout'));
   expect(staleLayoutAfterLoad).toContain('legacy-save');
 
   await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('data-portrait-viewport', 'false');
+  await page.waitForTimeout(350);
+  await expectLandscapeStartupBoard(page);
 
   await page.getByLabel('Tischauswahl öffnen').click();
   await page.getByText('Tische konfigurieren').click();

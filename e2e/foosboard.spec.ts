@@ -49,8 +49,8 @@ test.beforeEach(async ({ page }) => {
 
 test('renders the modern tactics board with legacy dimensions', async ({ page }) => {
   await expect(page.getByText('Foosboard')).toBeVisible();
-  await expect(page.getByText('Vorlage 610 x 470')).toBeVisible();
-  await expect(page.getByTestId('board-svg')).toHaveAttribute('viewBox', '0 0 610 470');
+  await expect(page.getByRole('region', { name: 'Foosboard Steuerung' })).toContainText(/Vorlage 610 x 634/);
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('viewBox', /0 0 610 634\.706/);
 });
 
 test('supports tactical interactions for lines and toggles', async ({ page }) => {
@@ -146,37 +146,32 @@ test('creates a table configuration from SVG test data and keeps previews contai
   await expectPreviewFitsAboveFooter(page, 'rod-preview-canvas');
 
   const rodPreviewMetrics = await page.getByLabel('Stangenvorschau').evaluate((svg) => {
-    const gripRects = Array.from(svg.querySelectorAll('rect'))
-      .map((rect) => ({
-        width: Number(rect.getAttribute('width') || 0),
-        height: Number(rect.getAttribute('height') || 0),
-        y: Number(rect.getAttribute('y') || 0),
-        fill: rect.getAttribute('fill') || '',
-      }))
-      .filter((rect) => Math.abs(rect.width - 4) < 0.01 && ['#111', '#111111', 'rgb(17, 17, 17)'].includes(rect.fill));
+    const rodGroups = Array.from(svg.querySelectorAll('g[data-row-key]')).map((group) => {
+      const gripRect = group.querySelector('rect[fill="url(#gripGradient)"]') as SVGRectElement | null;
+      const rodBody = group.querySelector('rect[data-rod-body="true"]') as SVGRectElement | null;
 
-    const lines = Array.from(svg.querySelectorAll('line')).map((line) => ({
-      y1: Number(line.getAttribute('y1') || 0),
-      y2: Number(line.getAttribute('y2') || 0),
-    }));
+      return {
+        team: group.getAttribute('data-team') || '',
+        gripHeight: Number(gripRect?.getAttribute('height') || 0),
+        gripY: Number(gripRect?.getAttribute('y') || 0),
+        rodTop: Number(rodBody?.getAttribute('y') || 0),
+        rodBottom: Number(rodBody ? Number(rodBody.getAttribute('y') || 0) + Number(rodBody.getAttribute('height') || 0) : 0),
+      };
+    });
 
     return {
       previewHeight: svg.getBoundingClientRect().height,
-      gripHeights: gripRects.map((rect) => rect.height),
-      gripTop: Math.min(...gripRects.map((rect) => rect.y)),
-      gripBottom: Math.max(...gripRects.map((rect) => rect.y + rect.height)),
-      rodTop: Math.min(...lines.map((line) => Math.min(line.y1, line.y2))),
-      rodBottom: Math.max(...lines.map((line) => Math.max(line.y1, line.y2))),
-      lastChildTestId: svg.lastElementChild?.getAttribute('data-testid') || '',
+      gripHeights: rodGroups.map((group) => group.gripHeight),
+      topGripMaxDelta: Math.max(...rodGroups.filter((group) => group.team === 'player2').map((group) => Math.abs(group.gripY - group.rodTop)), 0),
+      bottomGripMaxDelta: Math.max(...rodGroups.filter((group) => group.team === 'player1').map((group) => Math.abs(group.gripY + group.gripHeight - group.rodBottom)), 0),
     };
   });
 
   expect(rodPreviewMetrics.previewHeight).toBeGreaterThan(220);
   expect(rodPreviewMetrics.gripHeights.length).toBeGreaterThan(0);
   expect(rodPreviewMetrics.gripHeights.every((height) => Math.abs(height - 13) < 0.2)).toBeTruthy();
-  expect(Math.abs(rodPreviewMetrics.gripTop - rodPreviewMetrics.rodTop)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(rodPreviewMetrics.gripBottom - rodPreviewMetrics.rodBottom)).toBeLessThanOrEqual(0.5);
-  expect(rodPreviewMetrics.lastChildTestId).toBe('rod-preview-canvas-frame');
+  expect(rodPreviewMetrics.topGripMaxDelta).toBeLessThanOrEqual(0.5);
+  expect(rodPreviewMetrics.bottomGripMaxDelta).toBeLessThanOrEqual(0.5);
 
   await page.getByRole('button', { name: /weiter/i }).click();
 

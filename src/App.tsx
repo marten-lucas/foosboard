@@ -8,6 +8,7 @@ import { TableConfigForm } from './components/TableConfigForm';
 import { clamp, decodeScene, encodeScene, type Point } from './geometry';
 import { buildFigureRenderMetrics } from './lib/figureRenderModel';
 import { buildRodMotionBounds, getMaxRodExtension, getRodGeometry } from './lib/rodLayout';
+import { TABLE_FRAME_THICKNESS_CM } from './lib/tableSurface';
 import { buildTableLayoutFromDraft, defaultTableDraft, type StoredTableLayout, type SvgLayerData, type TableDraft } from './lib/tableLayout';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
@@ -43,15 +44,25 @@ type FigurePlacement = {
   };
 };
 
-function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null): Point {
+function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null, isPortraitViewport = false): Point {
   if (!svg) {
     return { x: 0, y: 0 };
   }
 
   const rect = svg.getBoundingClientRect();
+  const normalizedX = (event.clientX - rect.left) / rect.width;
+  const normalizedY = (event.clientY - rect.top) / rect.height;
+
+  if (isPortraitViewport) {
+    return {
+      x: normalizedY * boardConfig.width,
+      y: (1 - normalizedX) * boardConfig.height,
+    };
+  }
+
   return {
-    x: ((event.clientX - rect.left) / rect.width) * boardConfig.width,
-    y: ((event.clientY - rect.top) / rect.height) * boardConfig.height,
+    x: normalizedX * boardConfig.width,
+    y: normalizedY * boardConfig.height,
   };
 }
 
@@ -747,6 +758,7 @@ function App() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState>(null);
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const isPortraitViewport = useMediaQuery('(orientation: portrait)');
   const selectedTable = boardConfig.legacy.name;
   const [configDrawerOpened, setConfigDrawerOpened] = useState(false);
   const [configStep, setConfigStep] = useState(0);
@@ -820,7 +832,7 @@ function App() {
 
   const previewPaddingX = 10;
   const previewPaddingY = 10;
-  const frameThickness = 2;
+  const frameThickness = TABLE_FRAME_THICKNESS_CM;
   const gripThickness = 4;
   const gripLength = 13;
   const colorSwatches = ['#2e2e2e', '#868e96', '#fa5252', '#e64980', '#be4bdb', '#7950f2', '#4c6ef5', '#228be6', '#15aabf', '#12b886', '#40c057', '#82c91e', '#fab005', '#fd7e14'];
@@ -990,11 +1002,7 @@ function App() {
         return;
       }
 
-      const rect = svg.getBoundingClientRect();
-      const point = {
-        x: ((event.clientX - rect.left) / rect.width) * boardConfig.width,
-        y: ((event.clientY - rect.top) / rect.height) * boardConfig.height,
-      };
+      const point = pointFromEvent(event, svg, Boolean(isPortraitViewport));
 
       if (drag.kind === 'ball') {
         setBall({
@@ -1025,10 +1033,10 @@ function App() {
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('pointercancel', handleUp);
     };
-  }, [fieldBounds, moveRod, setBall]);
+  }, [fieldBounds, isPortraitViewport, moveRod, setBall]);
 
   const handleBoardPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    const point = pointFromEvent(event, svgRef.current);
+    const point = pointFromEvent(event, svgRef.current, Boolean(isPortraitViewport));
 
     if (activeTool === 'move') {
       setBall({
@@ -1054,7 +1062,7 @@ function App() {
       return;
     }
 
-    const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg);
+    const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg, Boolean(isPortraitViewport));
     dragRef.current = {
       kind: 'ball',
       pointerId: event.pointerId,
@@ -1072,7 +1080,7 @@ function App() {
       return;
     }
 
-    const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg);
+    const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg, Boolean(isPortraitViewport));
     dragRef.current = {
       kind: 'rod',
       pointerId: event.pointerId,
@@ -1102,6 +1110,7 @@ function App() {
   const liveRodExtension = getMaxRodExtension(liveRowConfigs, liveFieldWidthCm, boardConfig.fieldHeight);
   const liveGripLength = Math.max((liveGripLengthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 18);
   const liveGripThickness = Math.max((liveGripWidthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 10);
+  const fineRodNudgeStep = Math.max((0.5 / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 1);
   const liveFieldAssetId = boardConfig.settings?.field.assetId || boardConfig.legacy.sourceAsset;
   const savedFieldAsset = useMemo(
     () => (liveFieldAssetId ? normalizeFieldSvgMarkup(boardConfig.assets[liveFieldAssetId] || '') : ''),
@@ -1167,6 +1176,11 @@ function App() {
   const previewFigureState = previewFigureStates.unten;
   const liveRodHandleWidth = Math.max(liveFigureStates.unten.width * 1.2, liveGripThickness * 4, 40);
   const liveRodHandleHeight = Math.max(liveFigureStates.unten.height * 1.4, 56);
+  const nudgeRod = (rodId: RodConfig['id'], direction: 'towards-top' | 'towards-bottom') => {
+    const currentY = useBoardStore.getState().rods[rodId].y;
+    const delta = direction === 'towards-top' ? -fineRodNudgeStep : fineRodNudgeStep;
+    moveRod(rodId, currentY + delta);
+  };
 
   useEffect(() => {
     const testWindow = window as Window & { __foosboardStore?: typeof useBoardStore };
@@ -1222,6 +1236,7 @@ function App() {
         <main className="foosboard-stage">
           <BoardCanvas
             svgRef={svgRef}
+            isPortraitViewport={Boolean(isPortraitViewport)}
             ball={ball}
             showBall={false}
             rods={rods}
@@ -1236,6 +1251,7 @@ function App() {
             onBoardPointerDown={handleBoardPointerDown}
             onStartBallDrag={startBallDrag}
             onStartRodDrag={startRodDrag}
+            onNudgeRod={nudgeRod}
             onCycleRodTilt={cycleRodTilt}
           />
 

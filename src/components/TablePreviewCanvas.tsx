@@ -2,7 +2,13 @@ import type { TableRowConfig, TableRowKey } from '../lib/tableLayout';
 import { buildFigureRenderMetrics, type PreviewFigureState } from '../lib/figureRenderModel';
 import { buildCenteredFigurePositionsCm } from '../lib/rowFigureLayout';
 import { buildCenteredRodBounds, getRodGeometry } from '../lib/rodLayout';
+import { buildTableSurfaceGeometry } from '../lib/tableSurface';
+import { TableGoalVisuals } from './TableGoalVisuals';
 import { SharedVisualDefs } from './SharedVisualDefs';
+
+function getFigureForeignObjectX(width: number, anchorX: number, mirrored: boolean) {
+  return -width * (mirrored ? 1 - anchorX : anchorX);
+}
 
 type TablePreviewCanvasProps = {
   testId: string;
@@ -69,10 +75,15 @@ export function TablePreviewCanvas({
   bottomFigurePreview,
   figurePreviewState,
 }: TablePreviewCanvasProps) {
-  const goalHeight = (goalWidthCm / Math.max(fieldWidthCm, 1)) * previewFieldHeight;
-  const goalY = previewFieldY + (previewFieldHeight - goalHeight) / 2;
-  const goalDepth = Math.max(frameThickness / 2, 1);
-  const frameInset = frameThickness / 2;
+  const tableSurface = buildTableSurfaceGeometry({
+    fieldX: previewFieldX,
+    fieldY: previewFieldY,
+    fieldWidth: previewFieldWidth,
+    fieldHeight: previewFieldHeight,
+    fieldWidthCm,
+    frameThicknessCm: frameThickness,
+    goalWidthCm,
+  });
   const resolvedFigureState: PreviewFigureState = figurePreviewState || {
     markup: bottomFigurePreview || '',
     bounds: { width: 10, height: 20 },
@@ -104,8 +115,6 @@ export function TablePreviewCanvas({
       <svg viewBox={`0 0 ${fieldPreviewWidth} ${fieldPreviewHeight}`} className="foosboard-table-preview" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
         <rect x="0" y="0" width={fieldPreviewWidth} height={fieldPreviewHeight} rx="2" fill="#d9d9d9" />
         {!hasFieldUpload ? <rect x={previewFieldX} y={previewFieldY} width={previewFieldWidth} height={previewFieldHeight} fill="#69db7c" /> : null}
-        <rect x={previewFieldX - goalDepth} y={goalY} width={goalDepth} height={goalHeight} fill="#ffffff" />
-        <rect x={previewFieldX + previewFieldWidth} y={goalY} width={goalDepth} height={goalHeight} fill="#ffffff" />
       </svg>
 
       <div
@@ -230,7 +239,7 @@ export function TablePreviewCanvas({
                 ...points.map((point, index) => (
                   <g key={`${rowKey}-overlay-p1-${index}`}>
                     <foreignObject
-                      x={leftX - configuredFigureWidth * anchor.x}
+                      x={leftX + getFigureForeignObjectX(configuredFigureWidth, anchor.x, false)}
                       y={previewFieldY + (point / Math.max(fieldWidthCm, 1)) * previewFieldHeight - configuredFigureHeight * anchor.y}
                       width={configuredFigureWidth}
                       height={configuredFigureHeight}
@@ -242,7 +251,7 @@ export function TablePreviewCanvas({
                 ...points.map((point, index) => (
                   <g key={`${rowKey}-overlay-p2-${index}`}>
                     <foreignObject
-                      x={rightX - configuredFigureWidth * anchor.x}
+                      x={rightX + getFigureForeignObjectX(configuredFigureWidth, anchor.x, true)}
                       y={previewFieldY + (point / Math.max(fieldWidthCm, 1)) * previewFieldHeight - configuredFigureHeight * anchor.y}
                       width={configuredFigureWidth}
                       height={configuredFigureHeight}
@@ -255,7 +264,8 @@ export function TablePreviewCanvas({
             })
           : null}
 
-        <rect data-testid={`${testId}-frame`} x={previewFieldX + frameInset} y={previewFieldY + frameInset} width={previewFieldWidth - frameThickness} height={previewFieldHeight - frameThickness} fill="none" stroke="#111" strokeWidth={frameThickness} />
+        <rect data-testid={`${testId}-frame`} x={tableSurface.frame.x} y={tableSurface.frame.y} width={tableSurface.frame.width} height={tableSurface.frame.height} fill="none" stroke="#111" strokeWidth={tableSurface.frame.strokeWidth} />
+        <TableGoalVisuals goals={tableSurface.goals} />
       </svg>
     </div>
   );

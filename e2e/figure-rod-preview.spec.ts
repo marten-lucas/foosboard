@@ -58,8 +58,21 @@ test('FigureRodPreview – Ullrich P4P alle Lagezustände prüfen', async ({ pag
   assertFigureGeometry(nachHinten, 'nachHinten');
   await canvas.screenshot({ path: path.join(screenshotDir, 'ullrich--nachHinten.png') });
 
+  const nachHintenOpacity = await canvas.locator('foreignObject').first().evaluate((element) => getComputedStyle(element).opacity);
+  expect(nachHintenOpacity).toBe('0.5');
+
+  // ── Klick → hochgestellt ───────────────────────────────────────────────────
+  await toggle.click();
+  const hochgestellt = await extractFigureGeometry(page);
+  expect(hochgestellt.tiltState).toBe('hochgestellt');
+  assertFigureGeometry(hochgestellt, 'hochgestellt');
+  await canvas.screenshot({ path: path.join(screenshotDir, 'ullrich--hochgestellt.png') });
+
+  const hochgestelltOpacity = await canvas.locator('foreignObject').first().evaluate((element) => getComputedStyle(element).opacity);
+  expect(hochgestelltOpacity).toBe('0.5');
+
   // ── Mount muss in allen Tilt-Positionen ähnlich groß dargestellt werden ─────
-  const mountWidths = [unten.mountRenderedWidthPx, nachVorn.mountRenderedWidthPx, nachHinten.mountRenderedWidthPx];
+  const mountWidths = [unten.mountRenderedWidthPx, nachVorn.mountRenderedWidthPx, nachHinten.mountRenderedWidthPx, hochgestellt.mountRenderedWidthPx];
   const minMountWidth = Math.min(...mountWidths);
   const maxMountWidth = Math.max(...mountWidths);
   const relativeSpread = (maxMountWidth - minMountWidth) / Math.max(maxMountWidth, 1);
@@ -68,8 +81,18 @@ test('FigureRodPreview – Ullrich P4P alle Lagezustände prüfen', async ({ pag
     `Mount-Rechteck skaliert pro Zustand uneinheitlich (Spread ${(relativeSpread * 100).toFixed(1)}%).\n` +
       `  unten:      ${unten.mountRenderedWidthPx.toFixed(2)}px (viewBox ${unten.innerViewBox})\n` +
       `  nachVorn:   ${nachVorn.mountRenderedWidthPx.toFixed(2)}px (viewBox ${nachVorn.innerViewBox})\n` +
-      `  nachHinten: ${nachHinten.mountRenderedWidthPx.toFixed(2)}px (viewBox ${nachHinten.innerViewBox})`,
+      `  nachHinten: ${nachHinten.mountRenderedWidthPx.toFixed(2)}px (viewBox ${nachHinten.innerViewBox})\n` +
+      `  hochgestellt: ${hochgestellt.mountRenderedWidthPx.toFixed(2)}px (viewBox ${hochgestellt.innerViewBox})`,
   ).toBeLessThanOrEqual(0.1);
+
+  // ── Mount-Mitte muss in allen Tilt-Positionen auf der Stange liegen ────────
+  for (const geometry of [unten, nachVorn, nachHinten, hochgestellt]) {
+    const rodCenterPx = geometry.svgWidthPx > 0 ? geometry.svgWidthPx * (ROD_X / VIEW_WIDTH) : ROD_X;
+    expect(
+      Math.abs(geometry.mountRenderedCenterX - rodCenterPx),
+      `Mount ist nicht auf der Stange zentriert in Lage ${geometry.tiltState}: centerX=${geometry.mountRenderedCenterX.toFixed(2)}, rodX=${rodCenterPx.toFixed(2)}`,
+    ).toBeLessThanOrEqual(TOLERANCE * (geometry.svgWidthPx / VIEW_WIDTH || 1));
+  }
 
   // ── Schritt 4: Ergebnisvorschau muss zur Stangenvorschau passen ────────────
   await page.getByRole('button', { name: /weiter/i }).click();
@@ -116,11 +139,14 @@ interface FigureGeometry {
   foHeight: number;
   foWidthPx: number;
   foHeightPx: number;
+  svgWidthPx: number;
   rodRenderedWidthPx: number;
   mountSourceWidth: number;
   mountSourceHeight: number;
   mountRenderedWidthPx: number;
   mountRenderedHeightPx: number;
+  mountRenderedCenterX: number;
+  mountRenderedCenterY: number;
   innerViewBox: string;
 }
 
@@ -144,6 +170,8 @@ async function extractFigureGeometry(page: import('@playwright/test').Page): Pro
     const foWidth = parseFloat(fo?.getAttribute('width') ?? '0');
     const foHeight = parseFloat(fo?.getAttribute('height') ?? '0');
     const foRect = fo?.getBoundingClientRect();
+    const svgLeft = svgRect?.left || 0;
+    const svgTop = svgRect?.top || 0;
 
     const innerSvg = svg?.querySelector('foreignObject .foosboard-figure-svg-colorized svg') as SVGSVGElement | null;
     const rects = innerSvg ? Array.from(innerSvg.querySelectorAll('rect')) : [];
@@ -156,6 +184,8 @@ async function extractFigureGeometry(page: import('@playwright/test').Page): Pro
         sourceHeight,
         renderedWidth: rendered.width,
         renderedHeight: rendered.height,
+        renderedCenterX: rendered.left - svgLeft + rendered.width / 2,
+        renderedCenterY: rendered.top - svgTop + rendered.height / 2,
         sourceArea: sourceWidth * sourceHeight,
       };
     });
@@ -167,6 +197,8 @@ async function extractFigureGeometry(page: import('@playwright/test').Page): Pro
       sourceHeight: 0,
       renderedWidth: 0,
       renderedHeight: 0,
+      renderedCenterX: 0,
+      renderedCenterY: 0,
     };
 
     // Ankerpunkt: Der Punkt, an dem die Stange die Puppe durchsticht.
@@ -183,11 +215,14 @@ async function extractFigureGeometry(page: import('@playwright/test').Page): Pro
       foHeight,
       foWidthPx: foRect?.width || 0,
       foHeightPx: foRect?.height || 0,
+      svgWidthPx: svgRect?.width || 0,
       rodRenderedWidthPx,
       mountSourceWidth: mount.sourceWidth,
       mountSourceHeight: mount.sourceHeight,
       mountRenderedWidthPx: mount.renderedWidth,
       mountRenderedHeightPx: mount.renderedHeight,
+      mountRenderedCenterX: mount.renderedCenterX,
+      mountRenderedCenterY: mount.renderedCenterY,
       innerViewBox: innerSvg?.getAttribute('viewBox') || '',
     };
   }, { rodX: ROD_X, figureCenterY: FIGURE_CENTER_Y });
@@ -295,4 +330,10 @@ function assertFigureGeometry(g: FigureGeometry, label: string) {
     g.mountRenderedWidthPx,
     `${label}: Mount-Rechteck (${g.mountRenderedWidthPx.toFixed(2)}px) ist nicht breiter als Stange (${g.rodRenderedWidthPx.toFixed(2)}px). viewBox=${g.innerViewBox}`,
   ).toBeGreaterThan(g.rodRenderedWidthPx);
+
+  const rodCenterPx = g.svgWidthPx > 0 ? g.svgWidthPx * (ROD_X / VIEW_WIDTH) : 0;
+  expect(
+    Math.abs(g.mountRenderedCenterX - rodCenterPx),
+    `${label}: Mount-Mitte muss auf der Stange liegen, mountCenterX=${g.mountRenderedCenterX.toFixed(2)}, rodCenterX=${rodCenterPx.toFixed(2)}`,
+  ).toBeLessThanOrEqual(TOLERANCE * (g.svgWidthPx / VIEW_WIDTH || 1));
 }

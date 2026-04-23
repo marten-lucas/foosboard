@@ -2,10 +2,12 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Button, ColorInput, Divider, Drawer, Group, NumberInput, Paper, Select, SimpleGrid, Stack, Stepper, Text, TextInput } from '@mantine/core';
 import { FigureRodPreview } from './FigureRodPreview';
 import { SplitSaveButton } from './SplitSaveButton';
+import { TableGoalVisuals } from './TableGoalVisuals';
 import { TablePreviewCanvas } from './TablePreviewCanvas';
 import { UploadDropzone } from './UploadDropzone';
 import type { TableDraft, TableRowKey } from '../lib/tableLayout';
 import type { PreviewFigureState } from '../lib/figureRenderModel';
+import { buildTableSurfaceGeometry } from '../lib/tableSurface';
 
 type TableConfigFormProps = {
   opened: boolean;
@@ -84,10 +86,15 @@ export function TableConfigForm({
   onSave,
   onDownloadJson,
 }: TableConfigFormProps) {
-  const goalHeight = (tableDraft.goalWidth / Math.max(tableDraft.fieldWidth, 1)) * previewFieldHeight;
-  const goalY = fieldPreviewY + (previewFieldHeight - goalHeight) / 2;
-  const goalDepth = Math.max(frameThickness / 2, 1);
-  const frameInset = frameThickness / 2;
+  const fieldPreviewSurface = buildTableSurfaceGeometry({
+    fieldX: previewFieldX,
+    fieldY: fieldPreviewY,
+    fieldWidth: previewFieldWidth,
+    fieldHeight: previewFieldHeight,
+    fieldWidthCm: tableDraft.fieldWidth,
+    frameThicknessCm: frameThickness,
+    goalWidthCm: tableDraft.goalWidth,
+  });
 
   return (
     <Drawer opened={opened} onClose={onClose} title="Tischkonfiguration" position="right" size={isMobile ? '100%' : '72%'}>
@@ -118,8 +125,6 @@ export function TableConfigForm({
                     <svg viewBox={`0 0 ${fieldPreviewWidth} ${fieldPreviewHeight}`} className="foosboard-table-preview" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
                       <rect x="0" y="0" width={fieldPreviewWidth} height={fieldPreviewHeight} rx="2" fill="#d9d9d9" />
                       {!hasFieldUpload ? <rect x={previewFieldX} y={fieldPreviewY} width={previewFieldWidth} height={previewFieldHeight} fill="#69db7c" /> : null}
-                      <rect x={previewFieldX - goalDepth} y={goalY} width={goalDepth} height={goalHeight} fill="#ffffff" />
-                      <rect x={previewFieldX + previewFieldWidth} y={goalY} width={goalDepth} height={goalHeight} fill="#ffffff" />
                     </svg>
                     <div
                       className="foosboard-preview-field-window"
@@ -135,7 +140,8 @@ export function TableConfigForm({
                       {svgPreviews.field ? <div className="foosboard-svg-preview foosboard-svg-preview--fill foosboard-svg-preview--fit-width" dangerouslySetInnerHTML={{ __html: svgPreviews.field }} /> : null}
                     </div>
                     <svg viewBox={`0 0 ${fieldPreviewWidth} ${fieldPreviewHeight}`} className="foosboard-table-preview foosboard-table-preview--overlay" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
-                      <rect data-testid="field-preview-frame" x={previewFieldX + frameInset} y={fieldPreviewY + frameInset} width={previewFieldWidth - frameThickness} height={previewFieldHeight - frameThickness} fill="none" stroke="#111" strokeWidth={frameThickness} />
+                      <rect data-testid="field-preview-frame" x={fieldPreviewSurface.frame.x} y={fieldPreviewSurface.frame.y} width={fieldPreviewSurface.frame.width} height={fieldPreviewSurface.frame.height} fill="none" stroke="#111" strokeWidth={fieldPreviewSurface.frame.strokeWidth} />
+                      <TableGoalVisuals goals={fieldPreviewSurface.goals} />
                     </svg>
                   </div>
                 </Paper>

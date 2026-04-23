@@ -255,7 +255,7 @@ describe('FigureRodPreview – visuelle Positionierung und Skalierung', () => {
     expect(svg.querySelector('rect[fill="#222"]')).toBeNull();
   });
 
-  it('Lagezustand wechselt durch Klick korrekt durch (unten → nachVorn → nachHinten → unten)', async () => {
+  it('Lagezustand wechselt durch Klick korrekt durch (unten → nachVorn → nachHinten → hochgestellt → unten)', async () => {
     const user = userEvent.setup();
     renderPreview(STATES_REALISTIC);
 
@@ -267,6 +267,8 @@ describe('FigureRodPreview – visuelle Positionierung und Skalierung', () => {
     expect(svg.getAttribute('data-tilt-state')).toBe('nachVorn');
     await user.click(toggle);
     expect(svg.getAttribute('data-tilt-state')).toBe('nachHinten');
+    await user.click(toggle);
+    expect(svg.getAttribute('data-tilt-state')).toBe('hochgestellt');
     await user.click(toggle);
     expect(svg.getAttribute('data-tilt-state')).toBe('unten');
   });

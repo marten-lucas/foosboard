@@ -11,6 +11,18 @@ export type PreviewFigureState = {
   referenceWidth?: number;
 };
 
+export type FigureTiltState = 'unten' | 'nachVorn' | 'nachHinten';
+
+export type FigurePreviewTiltState = FigureTiltState | 'hochgestellt';
+
+export function resolveFigurePreviewTiltState(tiltState: FigurePreviewTiltState): FigureTiltState {
+  if (tiltState === 'hochgestellt') {
+    return 'nachHinten';
+  }
+
+  return tiltState;
+}
+
 type FigureRenderMetricsInput = {
   state: PreviewFigureState;
   figureWidthCm: number;

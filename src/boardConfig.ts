@@ -12,7 +12,7 @@ export type RodId =
   | 'P1_1';
 
 export type Team = 'orange' | 'blue';
-export type TiltMode = 'neutral' | 'front' | 'back';
+export type TiltMode = 'neutral' | 'front' | 'back' | 'hochgestellt';
 
 export interface RodConfig {
   id: RodId;
@@ -152,6 +152,14 @@ export const boardConfig: BoardConfig = createBoardConfigFromLayout(currentLayou
 export function applyTableLayout(layout: StoredTableLayout) {
   currentLayout = layout;
   Object.assign(boardConfig, createBoardConfigFromLayout(layout));
+}
+
+export function normalizeTiltMode(tilt: string | null | undefined): TiltMode {
+  if (tilt === 'front' || tilt === 'back' || tilt === 'hochgestellt') {
+    return tilt;
+  }
+
+  return 'neutral';
 }
 
 const defaultRodStates = boardConfig.rods.reduce((accumulator, rod) => {
