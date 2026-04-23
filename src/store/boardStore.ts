@@ -11,6 +11,7 @@ import {
   type ShotLine,
 } from '../boardConfig';
 import { clamp, createId } from '../geometry';
+import { buildRodMotionBounds } from '../lib/rodLayout';
 
 export type ToolMode = 'move' | 'shot' | 'pass';
 
@@ -81,7 +82,7 @@ export const useBoardStore = create<BoardStore>()(
             ...state.rods,
             [rodId]: {
               ...state.rods[rodId],
-              y: clamp(y, boardConfig.rodMinY, boardConfig.rodMaxY),
+              y: clamp(y, buildRodMotionBounds(rodId).minY, buildRodMotionBounds(rodId).maxY),
             },
           },
         })),

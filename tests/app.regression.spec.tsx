@@ -98,12 +98,17 @@ describe('app regression coverage', () => {
     expect(screen.getByLabelText('Hersteller')).toBeInTheDocument();
     expect(screen.getByLabelText('Spielfeldlänge (innen)')).toBeInTheDocument();
     expect(screen.getByLabelText('Spielfeldbreite (innen)')).toBeInTheDocument();
-    expect(screen.getByLabelText('Stangenlänge')).toBeInTheDocument();
-    expect(screen.getByLabelText('Stangendurchmesser')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /weiter/i }));
 
     expect(screen.getAllByLabelText('Position').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Stangenlänge').length).toBe(4);
+    expect(screen.getAllByLabelText('Stangendurchmesser').length).toBe(4);
+    expect((screen.getAllByLabelText('Stangenlänge')[0] as HTMLInputElement).value).toContain('109');
+    expect((screen.getAllByLabelText('Stangenlänge')[1] as HTMLInputElement).value).toContain('128.5');
+    expect((screen.getAllByLabelText('Stangenlänge')[2] as HTMLInputElement).value).toContain('104.1');
+    expect((screen.getAllByLabelText('Stangenlänge')[3] as HTMLInputElement).value).toContain('117');
+    expect((screen.getAllByLabelText('Stangendurchmesser')[0] as HTMLInputElement).value).toContain('1.6');
     expect(screen.getByLabelText('Stangenvorschau')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /weiter/i }));
@@ -164,9 +169,11 @@ describe('app regression coverage', () => {
     customLayout.settings.field.lengthCm = 118;
     customLayout.settings.field.widthCm = 70;
     customLayout.settings.field.goalWidthCm = 19.8;
-    customLayout.settings.configuration.rodLengthCm = 136.4;
-    customLayout.settings.configuration.rodDiameterCm = 1.7;
     customLayout.settings.configuration.rows.goalkeeper.position = 8.2;
+    for (const row of Object.values(customLayout.settings.configuration.rows)) {
+      row.rodLength = 136.4;
+      row.rodDiameter = 1.7;
+    }
     customLayout.settings.figures.widthCm = 4.1;
     customLayout.settings.figures.colors.player1 = '#123456';
     customLayout.settings.figures.colors.player2 = '#abcdef';
@@ -194,8 +201,6 @@ describe('app regression coverage', () => {
   expect((screen.getByLabelText('Spielfeldlänge (innen)') as HTMLInputElement).value).toContain('118');
   expect((screen.getByLabelText('Spielfeldbreite (innen)') as HTMLInputElement).value).toContain('70');
   expect((screen.getByLabelText('Torbreite') as HTMLInputElement).value).toContain('19.8');
-  expect((screen.getByLabelText('Stangenlänge') as HTMLInputElement).value).toContain('136.4');
-  expect((screen.getByLabelText('Stangendurchmesser') as HTMLInputElement).value).toContain('1.7');
 
     const fieldPreviewWindow = screen.getByTestId('field-preview-window');
     expect(fieldPreviewWindow).toBeInTheDocument();
@@ -204,6 +209,10 @@ describe('app regression coverage', () => {
 
     await user.click(screen.getByRole('button', { name: /weiter/i }));
   expect(((screen.getAllByLabelText('Position')[0] as HTMLInputElement).value)).toContain('8.2');
+  expect(screen.getAllByLabelText('Stangenlänge').length).toBe(4);
+  expect(screen.getAllByLabelText('Stangendurchmesser').length).toBe(4);
+  expect((screen.getAllByLabelText('Stangenlänge')[0] as HTMLInputElement).value).toContain('136.4');
+  expect((screen.getAllByLabelText('Stangendurchmesser')[0] as HTMLInputElement).value).toContain('1.7');
 
     await user.click(screen.getByRole('button', { name: /weiter/i }));
   expect((screen.getByLabelText('Breite der Puppe') as HTMLInputElement).value).toContain('4.1');

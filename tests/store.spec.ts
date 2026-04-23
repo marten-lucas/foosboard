@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { boardConfig, createDefaultScene } from '../src/boardConfig';
+import { buildRodStrokeWidth } from '../src/lib/figureRenderModel';
+import { buildRodMotionBounds, getRodGeometry } from '../src/lib/rodLayout';
+import { defaultTableDraft } from '../src/lib/tableLayout';
 import { getSerializableScene, useBoardStore } from '../src/store/boardStore';
 
 function resetBoardState() {
@@ -88,5 +91,33 @@ describe('board store', () => {
       [-55, 55],
       [0],
     ]);
+  });
+
+  it('clamps rods per row outer stop instead of a global board-wide limit', () => {
+    const store = useBoardStore.getState();
+
+    const goalkeeperBounds = buildRodMotionBounds('P2_1');
+    const midfieldBounds = buildRodMotionBounds('P2_5');
+
+    store.moveRod('P2_1', -9999);
+    expect(useBoardStore.getState().rods.P2_1.y).toBeCloseTo(goalkeeperBounds.minY, 3);
+
+    store.moveRod('P2_5', 9999);
+    expect(useBoardStore.getState().rods.P2_5.y).toBeCloseTo(midfieldBounds.maxY, 3);
+
+    expect(goalkeeperBounds.minY).not.toBeCloseTo(midfieldBounds.minY, 3);
+  });
+
+  it('derives rod stroke width from the shared preview formula', () => {
+    const row = boardConfig.settings?.configuration.rows.goalkeeper ?? defaultTableDraft.rows.goalkeeper;
+    const rodGeometry = getRodGeometry(row, boardConfig.settings?.field.widthCm ?? 68, boardConfig.fieldHeight);
+    const sharedStrokeWidth = buildRodStrokeWidth({
+      rodDiameterCm: row.rodDiameter,
+      fieldWidthCm: boardConfig.settings?.field.widthCm ?? 68,
+      viewFieldHeight: boardConfig.fieldHeight,
+      min: 0.6,
+    });
+
+    expect(rodGeometry.rodStrokeWidth).toBeCloseTo(sharedStrokeWidth, 6);
   });
 });

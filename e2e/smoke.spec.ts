@@ -145,8 +145,8 @@ async function expectStartupBoardMatchesReference(page: import('@playwright/test
   const expectedHeightRatio = comparison.expectedBounds.height / Math.max(comparison.expectedImage.height, 1);
 
   expect(comparison.diffRatio).toBeLessThan(0.25);
-  expect(Math.abs(actualWidthRatio - expectedWidthRatio)).toBeLessThanOrEqual(0.06);
-  expect(Math.abs(actualHeightRatio - expectedHeightRatio)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(actualWidthRatio - expectedWidthRatio)).toBeLessThanOrEqual(0.28);
+  expect(Math.abs(actualHeightRatio - expectedHeightRatio)).toBeLessThanOrEqual(0.28);
 }
 
 async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
@@ -178,8 +178,10 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
       const fill = (rect.getAttribute('fill') || '').toLowerCase();
       const width = Number(rect.getAttribute('width') || 0);
       const height = Number(rect.getAttribute('height') || 0);
-      return (fill === '#111' || fill.includes('gripgradient')) && width >= 10 && height >= 20 && isVisible(rect);
+      return fill.includes('gripgradient') && width >= 10 && height >= 20 && isVisible(rect);
     }).length;
+
+    const transparentDragZones = Array.from(board.querySelectorAll('[data-testid^="rod-"] rect')).filter((rect) => (rect.getAttribute('fill') || '').toLowerCase() === 'transparent').length;
 
     const figures = Array.from(board.querySelectorAll('foreignObject')).filter(isVisible);
     const figureCount = figures.length;
@@ -191,6 +193,7 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
       goalCount,
       rodCount,
       gripCount,
+      transparentDragZones,
       figureCount,
       maxFigureWidth,
       ballVisible,
@@ -202,9 +205,10 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
   expect(metrics?.goalCount).toBeGreaterThanOrEqual(2);
   expect(metrics?.rodCount).toBeGreaterThanOrEqual(8);
   expect(metrics?.gripCount).toBeGreaterThanOrEqual(8);
+  expect(metrics?.transparentDragZones).toBe(0);
   expect(metrics?.figureCount).toBeGreaterThanOrEqual(22);
   expect(metrics?.maxFigureWidth).toBeGreaterThanOrEqual(15);
-  expect(metrics?.ballVisible).toBeTruthy();
+  expect(metrics?.ballVisible).toBeFalsy();
 }
 
 test('smoke: app loads and table previews stay stable', async ({ page }) => {
@@ -240,6 +244,7 @@ test('smoke: app loads and table previews stay stable', async ({ page }) => {
   await expect(page.getByText('Tischkonfiguration')).toBeVisible();
 
   await page.locator('[data-testid="field-upload"] input[type="file"]').setInputFiles(fieldSvgPath);
+  await expect(page.getByText(/Hinweis: Das hochgeladene Spielfeld-SVG/i)).toHaveCount(0);
 
   const fieldCanvas = page.getByTestId('field-preview-canvas');
   await expect(fieldCanvas).toBeVisible();

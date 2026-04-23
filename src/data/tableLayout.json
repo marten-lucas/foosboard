@@ -17,8 +17,6 @@
       "assetId": "field.primary"
     },
     "configuration": {
-      "rodLengthCm": 128.5,
-      "rodDiameterCm": 1.6,
       "gripLengthCm": 7,
       "gripWidthCm": 3,
       "rows": {
@@ -26,25 +24,33 @@
           "position": 7.5,
           "playerCount": 1,
           "spacing": 18.0625,
-          "outerStop": 12
+          "outerStop": 20.25,
+          "rodLength": 109,
+          "rodDiameter": 1.6
         },
         "defense": {
           "position": 22.5,
           "playerCount": 2,
           "spacing": 23.375,
-          "outerStop": 13
+          "outerStop": 2,
+          "rodLength": 128.5,
+          "rodDiameter": 1.6
         },
         "midfield": {
           "position": 52.5,
           "playerCount": 5,
           "spacing": 12.75,
-          "outerStop": 10
+          "outerStop": 2,
+          "rodLength": 104.1,
+          "rodDiameter": 1.6
         },
         "offense": {
           "position": 82.5,
           "playerCount": 3,
           "spacing": 18.0625,
-          "outerStop": 11
+          "outerStop": 2,
+          "rodLength": 117,
+          "rodDiameter": 1.6
         }
       }
     },
@@ -129,7 +135,9 @@
         0
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#d9480f"
+      "figureColor": "#d9480f",
+      "rodLengthCm": 109,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P2_2",
@@ -143,7 +151,9 @@
         55
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#d9480f"
+      "figureColor": "#d9480f",
+      "rodLengthCm": 128.5,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P1_3",
@@ -158,7 +168,9 @@
         85
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#1c7ed6"
+      "figureColor": "#1c7ed6",
+      "rodLengthCm": 117,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P2_5",
@@ -175,7 +187,9 @@
         120
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#d9480f"
+      "figureColor": "#d9480f",
+      "rodLengthCm": 104.1,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P1_5",
@@ -192,7 +206,9 @@
         120
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#1c7ed6"
+      "figureColor": "#1c7ed6",
+      "rodLengthCm": 104.1,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P2_3",
@@ -207,7 +223,9 @@
         85
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#d9480f"
+      "figureColor": "#d9480f",
+      "rodLengthCm": 117,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P1_2",
@@ -221,7 +239,9 @@
         55
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#1c7ed6"
+      "figureColor": "#1c7ed6",
+      "rodLengthCm": 128.5,
+      "rodDiameterCm": 1.6
     },
     {
       "id": "P1_1",
@@ -234,7 +254,9 @@
         0
       ],
       "rodColor": "#c9c2b8",
-      "figureColor": "#1c7ed6"
+      "figureColor": "#1c7ed6",
+      "rodLengthCm": 109,
+      "rodDiameterCm": 1.6
     }
   ]
 }

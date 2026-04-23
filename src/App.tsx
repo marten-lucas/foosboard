@@ -7,6 +7,7 @@ import { BoardMenu } from './components/BoardMenu';
 import { TableConfigForm } from './components/TableConfigForm';
 import { clamp, decodeScene, encodeScene, type Point } from './geometry';
 import { buildFigureRenderMetrics } from './lib/figureRenderModel';
+import { buildRodMotionBounds, getMaxRodExtension, getRodGeometry } from './lib/rodLayout';
 import { buildTableLayoutFromDraft, defaultTableDraft, type StoredTableLayout, type SvgLayerData, type TableDraft } from './lib/tableLayout';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
@@ -447,6 +448,50 @@ function normalizeSvgMarkup(svgMarkup: string, preserveAspectRatio: string, auto
   }
 }
 
+function getSvgAspectRatio(svgMarkup: string) {
+  if (!svgMarkup || typeof DOMParser === 'undefined') {
+    return null;
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sanitizeSvgMarkup(svgMarkup), 'image/svg+xml');
+    const root = doc.querySelector('svg');
+
+    if (!root) {
+      return null;
+    }
+
+    revealSvgNode(root);
+    const occupiedNode = findSvgNodeByName(root, 'floor') ?? findSvgNodeByName(root, 'field') ?? findSvgNodeByName(root, 'spielfeld') ?? root;
+    const occupiedBounds = getNodeBounds(occupiedNode) ?? getRenderedSvgBounds(occupiedNode);
+    if (occupiedBounds) {
+      const width = occupiedBounds.maxX - occupiedBounds.minX;
+      const height = occupiedBounds.maxY - occupiedBounds.minY;
+      if (width > 0 && height > 0) {
+        return width / height;
+      }
+    }
+
+    const widthAttribute = root.getAttribute('width') || '';
+    const heightAttribute = root.getAttribute('height') || '';
+    const width = widthAttribute.includes('%') ? NaN : Number.parseFloat(widthAttribute);
+    const height = heightAttribute.includes('%') ? NaN : Number.parseFloat(heightAttribute);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      return width / height;
+    }
+
+    const viewBox = (root.getAttribute('viewBox') || root.getAttribute('viewbox') || '').trim().split(/[\s,]+/).map((value) => Number(value));
+    if (viewBox.length === 4 && Number.isFinite(viewBox[2]) && Number.isFinite(viewBox[3]) && viewBox[2] > 0 && viewBox[3] > 0) {
+      return viewBox[2] / viewBox[3];
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function findSvgNodeByName(root: Element, targetName: string) {
   const normalizedTarget = targetName.trim().toLowerCase();
   if (!normalizedTarget) {
@@ -634,8 +679,6 @@ function buildConfiguratorStateFromLayout(layout: Pick<typeof boardConfig, 'lega
     fieldLength: settings?.field.lengthCm ?? defaultTableDraft.fieldLength,
     fieldWidth: settings?.field.widthCm ?? defaultTableDraft.fieldWidth,
     goalWidth: settings?.field.goalWidthCm ?? defaultTableDraft.goalWidth,
-    rodLength: settings?.configuration.rodLengthCm ?? defaultTableDraft.rodLength,
-    rodDiameter: settings?.configuration.rodDiameterCm ?? defaultTableDraft.rodDiameter,
     rows: {
       goalkeeper: { ...defaultTableDraft.rows.goalkeeper, ...(rows?.goalkeeper ?? {}) },
       defense: { ...defaultTableDraft.rows.defense, ...(rows?.defense ?? {}) },
@@ -716,7 +759,7 @@ function App() {
 
   const updateRowConfig = (
     row: 'goalkeeper' | 'defense' | 'midfield' | 'offense',
-    field: 'position' | 'playerCount' | 'spacing' | 'outerStop',
+    field: 'position' | 'playerCount' | 'spacing' | 'outerStop' | 'rodLength' | 'rodDiameter',
     value: string | number,
   ) => {
     setTableDraft((current) => ({
@@ -781,14 +824,17 @@ function App() {
   const gripThickness = 4;
   const gripLength = 13;
   const colorSwatches = ['#2e2e2e', '#868e96', '#fa5252', '#e64980', '#be4bdb', '#7950f2', '#4c6ef5', '#228be6', '#15aabf', '#12b886', '#40c057', '#82c91e', '#fab005', '#fd7e14'];
-  const rodExtension = Math.max((tableDraft.rodLength - tableDraft.fieldWidth) / 2, 0);
+  const previewRodExtension = Math.max(
+    ...Object.values(tableDraft.rows).map((row) => Math.max((row.rodLength - tableDraft.fieldWidth) / 2, 0)),
+    0,
+  );
   const fieldPreviewWidth = tableDraft.fieldLength + previewPaddingX * 2;
   const fieldPreviewHeight = tableDraft.fieldWidth + previewPaddingY * 2;
   const rodPreviewWidth = fieldPreviewWidth;
-  const rodPreviewHeight = tableDraft.fieldWidth + previewPaddingY * 2 + rodExtension * 2;
+  const rodPreviewHeight = tableDraft.fieldWidth + previewPaddingY * 2 + previewRodExtension * 2;
   const previewFieldX = previewPaddingX;
   const fieldPreviewY = previewPaddingY;
-  const rodPreviewFieldY = previewPaddingY + rodExtension;
+  const rodPreviewFieldY = previewPaddingY + previewRodExtension;
   const previewFieldWidth = tableDraft.fieldLength;
   const previewFieldHeight = tableDraft.fieldWidth;
 
@@ -820,6 +866,20 @@ function App() {
   const getLayerPreview = (layerName: string) => figureLayerData[layerName]?.preview || '';
   const getLayerBounds = (layerName: string) => figureLayerData[layerName]?.bounds;
   const hasFieldUpload = Boolean(svgPreviews.field);
+  const fieldSvgAspectRatio = useMemo(() => getSvgAspectRatio(svgPreviews.field), [svgPreviews.field]);
+  const expectedFieldAspectRatio = tableDraft.fieldLength / Math.max(tableDraft.fieldWidth, 1);
+  const fieldAspectWarning = useMemo(() => {
+    if (!svgPreviews.field || !fieldSvgAspectRatio) {
+      return '';
+    }
+
+    const mismatch = Math.abs(fieldSvgAspectRatio - expectedFieldAspectRatio) / Math.max(expectedFieldAspectRatio, 1e-6);
+    if (mismatch <= 0.05) {
+      return '';
+    }
+
+    return `Hinweis: Das hochgeladene Spielfeld-SVG hat ein Seitenverhältnis von ${fieldSvgAspectRatio.toFixed(2)}:1, erwartet sind ${expectedFieldAspectRatio.toFixed(2)}:1.`;
+  }, [expectedFieldAspectRatio, fieldSvgAspectRatio, svgPreviews.field]);
   const tableExportData = useMemo(
     () => buildTableLayoutFromDraft(tableDraft, svgPreviews, figureLayerData),
     [tableDraft, svgPreviews, figureLayerData],
@@ -905,6 +965,9 @@ function App() {
       const params = new URLSearchParams(hash);
       const token = params.get('scene');
       if (!token) {
+        // Ohne Share-Link soll das Board immer neutral starten,
+        // unabhängig von einem eventuell persistierten letzten Zustand.
+        resetScene();
         return;
       }
 
@@ -917,7 +980,7 @@ function App() {
     applyHashScene();
     window.addEventListener('hashchange', applyHashScene);
     return () => window.removeEventListener('hashchange', applyHashScene);
-  }, [hydrateScene]);
+  }, [hydrateScene, resetScene]);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -939,7 +1002,8 @@ function App() {
           y: clamp(point.y - drag.offsetY, fieldBounds.top, fieldBounds.bottom),
         });
       } else {
-        moveRod(drag.rodId, clamp(point.y - drag.offsetY, boardConfig.rodMinY, boardConfig.rodMaxY));
+        const rodBounds = buildRodMotionBounds(drag.rodId);
+        moveRod(drag.rodId, clamp(point.y - drag.offsetY, rodBounds.minY, rodBounds.maxY));
       }
     };
 
@@ -1031,20 +1095,13 @@ function App() {
 
   const goalTop = boardConfig.centerY - boardConfig.goalWidth / 2;
   const liveFieldWidthCm = boardConfig.settings?.field.widthCm ?? tableDraft.fieldWidth;
-  const liveRodLengthCm = boardConfig.settings?.configuration.rodLengthCm ?? tableDraft.rodLength;
-  const liveRodDiameterCm = boardConfig.settings?.configuration.rodDiameterCm ?? tableDraft.rodDiameter;
   const liveGripLengthCm = boardConfig.settings?.configuration.gripLengthCm ?? 7;
   const liveGripWidthCm = boardConfig.settings?.configuration.gripWidthCm ?? 3;
   const liveFigureWidthCm = boardConfig.settings?.figures.widthCm ?? tableDraft.figureWidth;
-  const liveRodExtensionRaw = Math.max(((liveRodLengthCm - liveFieldWidthCm) / 2 / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 0);
-  const liveMaxRodExtension = Math.max(
-    Math.min(boardConfig.fieldY - 12, boardConfig.height - (boardConfig.fieldY + boardConfig.fieldHeight) - 12),
-    0,
-  );
-  const liveRodExtension = Math.min(liveRodExtensionRaw, liveMaxRodExtension);
+  const liveRowConfigs = boardConfig.settings?.configuration.rows ?? defaultTableDraft.rows;
+  const liveRodExtension = getMaxRodExtension(liveRowConfigs, liveFieldWidthCm, boardConfig.fieldHeight);
   const liveGripLength = Math.max((liveGripLengthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 18);
   const liveGripThickness = Math.max((liveGripWidthCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 10);
-  const liveRodStrokeWidth = Math.max((liveRodDiameterCm / Math.max(liveFieldWidthCm, 1)) * boardConfig.fieldHeight, 4);
   const liveFieldAssetId = boardConfig.settings?.field.assetId || boardConfig.legacy.sourceAsset;
   const savedFieldAsset = useMemo(
     () => (liveFieldAssetId ? normalizeFieldSvgMarkup(boardConfig.assets[liveFieldAssetId] || '') : ''),
@@ -1111,6 +1168,15 @@ function App() {
   const liveRodHandleWidth = Math.max(liveFigureStates.unten.width * 1.2, liveGripThickness * 4, 40);
   const liveRodHandleHeight = Math.max(liveFigureStates.unten.height * 1.4, 56);
 
+  useEffect(() => {
+    const testWindow = window as Window & { __foosboardStore?: typeof useBoardStore };
+    testWindow.__foosboardStore = useBoardStore;
+
+    return () => {
+      delete testWindow.__foosboardStore;
+    };
+  }, []);
+
   return (
     <AppShell padding={0}>
       <BoardMenu selectedTable={selectedTable} onOpenConfig={handleOpenConfig} />
@@ -1127,6 +1193,7 @@ function App() {
         handleSvgDrop={handleSvgDrop}
         svgPreviews={svgPreviews}
         hasFieldUpload={hasFieldUpload}
+        fieldAspectWarning={fieldAspectWarning}
         fieldPreviewWidth={fieldPreviewWidth}
         fieldPreviewHeight={fieldPreviewHeight}
         rodPreviewWidth={rodPreviewWidth}
@@ -1136,7 +1203,7 @@ function App() {
         rodPreviewFieldY={rodPreviewFieldY}
         previewFieldWidth={previewFieldWidth}
         previewFieldHeight={previewFieldHeight}
-        rodExtension={rodExtension}
+        rodExtension={previewRodExtension}
         frameThickness={frameThickness}
         gripThickness={gripThickness}
         gripLength={gripLength}
@@ -1156,13 +1223,13 @@ function App() {
           <BoardCanvas
             svgRef={svgRef}
             ball={ball}
+            showBall={false}
             rods={rods}
             savedFieldAsset={savedFieldAsset}
             goalTop={goalTop}
             liveRodExtension={liveRodExtension}
             liveGripLength={liveGripLength}
             liveGripThickness={liveGripThickness}
-            liveRodStrokeWidth={liveRodStrokeWidth}
             liveRodHandleWidth={liveRodHandleWidth}
             liveRodHandleHeight={liveRodHandleHeight}
             liveFigureStates={liveFigureStates}

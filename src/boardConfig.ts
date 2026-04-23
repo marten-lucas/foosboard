@@ -24,6 +24,8 @@ export interface RodConfig {
   figureOffsets?: number[];
   rodColor: string;
   figureColor: string;
+  rodLengthCm: number;
+  rodDiameterCm: number;
 }
 
 export interface BoardConfig {
@@ -106,9 +108,31 @@ function resolveStoredLayout(): StoredTableLayout {
 }
 
 function createBoardConfigFromLayout(layout: StoredTableLayout): BoardConfig {
+  const rowKeyByRodId: Record<RodId, keyof StoredTableLayout['settings']['configuration']['rows']> = {
+    P2_1: 'goalkeeper',
+    P2_2: 'defense',
+    P2_5: 'midfield',
+    P2_3: 'offense',
+    P1_3: 'offense',
+    P1_5: 'midfield',
+    P1_2: 'defense',
+    P1_1: 'goalkeeper',
+  };
+
+  const rows = layout.settings?.configuration?.rows;
+  const normalizedRods = (layout.rods as RodConfig[]).map((rod) => {
+    const row = rows?.[rowKeyByRodId[rod.id]];
+
+    return {
+      ...rod,
+      rodLengthCm: row?.rodLength ?? rod.rodLengthCm,
+      rodDiameterCm: row?.rodDiameter ?? rod.rodDiameterCm,
+    };
+  });
+
   return {
     ...layout.dimensions,
-    rods: layout.rods as RodConfig[],
+    rods: normalizedRods,
     colors: layout.palette,
     legacy: {
       name: layout.meta.name,

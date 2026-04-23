@@ -1,5 +1,7 @@
 import type { RefObject } from 'react';
 import { boardConfig, type BallState, type RodConfig, type RodState } from '../boardConfig';
+import { defaultTableDraft } from '../lib/tableLayout';
+import { getRodGeometry, getRodRowKey } from '../lib/rodLayout';
 import { SharedVisualDefs } from './SharedVisualDefs';
 import { buildCenteredOffsets } from '../lib/rowFigureLayout';
 
@@ -18,13 +20,13 @@ type LiveFigureState = {
 type BoardCanvasProps = {
   svgRef: RefObject<SVGSVGElement | null>;
   ball: BallState;
+  showBall?: boolean;
   rods: Record<RodConfig['id'], RodState>;
   savedFieldAsset: string;
   goalTop: number;
   liveRodExtension: number;
   liveGripLength: number;
   liveGripThickness: number;
-  liveRodStrokeWidth: number;
   liveRodHandleWidth: number;
   liveRodHandleHeight: number;
   liveFigureStates: Record<FigureStateKey, LiveFigureState>;
@@ -57,13 +59,13 @@ function getRodOffsets(rod: RodConfig): number[] {
 export function BoardCanvas({
   svgRef,
   ball,
+  showBall = true,
   rods,
   savedFieldAsset,
   goalTop,
   liveRodExtension,
   liveGripLength,
   liveGripThickness,
-  liveRodStrokeWidth,
   liveRodHandleWidth,
   liveRodHandleHeight,
   liveFigureStates,
@@ -72,6 +74,8 @@ export function BoardCanvas({
   onStartRodDrag,
   onCycleRodTilt,
 }: BoardCanvasProps) {
+  const fieldWidthCm = boardConfig.settings?.field.widthCm ?? defaultTableDraft.fieldWidth;
+
   return (
     <div className="foosboard-board-wrap">
       <svg
@@ -90,7 +94,6 @@ export function BoardCanvas({
           <SharedVisualDefs />
         </defs>
 
-        <rect width={boardConfig.width} height={boardConfig.height} fill={boardConfig.colors.pageBg} />
         <rect x={boardConfig.fieldX} y={boardConfig.fieldY} width={boardConfig.fieldWidth} height={boardConfig.fieldHeight} fill={boardConfig.colors.boardInner} />
         {savedFieldAsset ? (
           <foreignObject x={boardConfig.fieldX} y={boardConfig.fieldY} width={boardConfig.fieldWidth} height={boardConfig.fieldHeight}>
@@ -104,38 +107,59 @@ export function BoardCanvas({
 
         {boardConfig.rods.map((rod) => {
           const rodState = rods[rod.id];
+          const rowKey = getRodRowKey(rod.id);
           const offsets = getRodOffsets(rod);
-          const rodTop = rod.team === 'orange' ? boardConfig.fieldY : boardConfig.fieldY - liveRodExtension;
-          const rodBottom = rod.team === 'orange' ? boardConfig.fieldY + boardConfig.fieldHeight + liveRodExtension : boardConfig.fieldY + boardConfig.fieldHeight;
+          const rodGeometry = getRodGeometry({ rodLength: rod.rodLengthCm, rodDiameter: rod.rodDiameterCm }, fieldWidthCm, boardConfig.fieldHeight);
+          const rodHeight = boardConfig.fieldHeight + rodGeometry.rodExtension * 2;
+          const rodTop = rodState.y - rodHeight / 2;
+          const rodBottom = rodState.y + rodHeight / 2;
+          const rodCapWidth = Math.max(rodGeometry.rodStrokeWidth * 1.55, 9);
+          const rodCapHeight = Math.max(rodGeometry.rodStrokeWidth * 0.45, 3.2);
 
           return (
-            <g key={rod.id} data-testid={`rod-${rod.id}`} transform={`translate(${rod.x},0)`}>
+            <g
+              key={rod.id}
+              data-testid={`rod-${rod.id}`}
+              data-row-key={rowKey}
+              data-rod-length-cm={rod.rodLengthCm}
+              data-rod-extension={rodGeometry.rodExtension}
+              transform={`translate(${rod.x},0)`}
+            >
               {/* Stange als Rect mit zylindrischem Gradient */}
               <rect
-                x={-liveRodStrokeWidth / 2}
+                data-rod-body="true"
+                x={-rodGeometry.rodStrokeWidth / 2}
                 y={rodTop}
-                width={liveRodStrokeWidth}
+                width={rodGeometry.rodStrokeWidth}
                 height={rodBottom - rodTop}
                 fill="url(#rodGradient)"
+              />
+              <rect
+                x={-rodCapWidth / 2}
+                y={rodTop - rodCapHeight / 2}
+                width={rodCapWidth}
+                height={rodCapHeight}
+                rx={rodCapHeight / 3}
+                fill="rgba(70,70,70,0.85)"
+              />
+              <rect
+                x={-rodCapWidth / 2}
+                y={rodBottom - rodCapHeight / 2}
+                width={rodCapWidth}
+                height={rodCapHeight}
+                rx={rodCapHeight / 3}
+                fill="rgba(70,70,70,0.85)"
               />
               {/* Griff */}
               <rect
                 x={-liveGripThickness / 2}
-                y={rod.team === 'orange' ? rodBottom - Math.min(liveRodExtension, liveGripLength) : rodTop}
+                y={rod.team === 'orange' ? rodBottom - Math.min(rodGeometry.rodExtension, liveGripLength) : rodTop}
                 width={liveGripThickness}
-                height={Math.min(liveRodExtension, liveGripLength)}
+                height={Math.min(rodGeometry.rodExtension, liveGripLength)}
                 rx={liveGripThickness / 4}
                 fill="url(#gripGradient)"
                 stroke="rgba(0,0,0,0.25)"
                 strokeWidth="0.4"
-              />
-              <rect
-                x={-liveRodHandleWidth / 2}
-                y={rodState.y - liveRodHandleHeight / 2}
-                width={liveRodHandleWidth}
-                height={liveRodHandleHeight}
-                fill="transparent"
-                stroke="none"
                 onPointerDown={(event) => onStartRodDrag(rod.id, event)}
                 cursor="ns-resize"
               />
@@ -188,28 +212,30 @@ export function BoardCanvas({
           style={{ pointerEvents: 'none' }}
         />
 
-        <g>
-          {/* Ball – sphärischer Lichteffekt */}
-          <circle
-            data-testid="ball-token"
-            cx={ball.x}
-            cy={ball.y}
-            r={boardConfig.ballRadius}
-            fill="url(#ballGradient)"
-            stroke="rgba(60,60,60,0.45)"
-            strokeWidth={1.5}
-            onPointerDown={onStartBallDrag}
-            cursor="grab"
-          />
-          {/* Spekulares Highlight */}
-          <circle
-            cx={ball.x - boardConfig.ballRadius * 0.27}
-            cy={ball.y - boardConfig.ballRadius * 0.29}
-            r={boardConfig.ballRadius * 0.22}
-            fill="rgba(255,255,255,0.82)"
-            style={{ pointerEvents: 'none' }}
-          />
-        </g>
+        {showBall ? (
+          <g>
+            {/* Ball – sphärischer Lichteffekt */}
+            <circle
+              data-testid="ball-token"
+              cx={ball.x}
+              cy={ball.y}
+              r={boardConfig.ballRadius}
+              fill="url(#ballGradient)"
+              stroke="rgba(60,60,60,0.45)"
+              strokeWidth={1.5}
+              onPointerDown={onStartBallDrag}
+              cursor="grab"
+            />
+            {/* Spekulares Highlight */}
+            <circle
+              cx={ball.x - boardConfig.ballRadius * 0.27}
+              cy={ball.y - boardConfig.ballRadius * 0.29}
+              r={boardConfig.ballRadius * 0.22}
+              fill="rgba(255,255,255,0.82)"
+              style={{ pointerEvents: 'none' }}
+            />
+          </g>
+        ) : null}
       </svg>
     </div>
   );

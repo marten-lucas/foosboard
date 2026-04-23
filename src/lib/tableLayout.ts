@@ -7,6 +7,8 @@ export type TableRowConfig = {
   playerCount: number;
   spacing: number;
   outerStop: number;
+  rodLength: number;
+  rodDiameter: number;
 };
 
 export type SvgLayerData = {
@@ -24,8 +26,6 @@ export type TableDraft = {
   fieldLength: number;
   fieldWidth: number;
   goalWidth: number;
-  rodLength: number;
-  rodDiameter: number;
   rows: Record<TableRowKey, TableRowConfig>;
   figureWidth: number;
   playerOneColor: string;
@@ -59,8 +59,6 @@ export type StoredTableLayout = {
       assetId: string | null;
     };
     configuration: {
-      rodLengthCm: number;
-      rodDiameterCm: number;
       gripLengthCm?: number;
       gripWidthCm?: number;
       rows: Record<TableRowKey, TableRowConfig>;
@@ -133,13 +131,11 @@ export const defaultTableDraft: TableDraft = {
   fieldLength: 120,
   fieldWidth: 68,
   goalWidth: 20.5,
-  rodLength: 128.5,
-  rodDiameter: 1.6,
   rows: {
-    goalkeeper: { position: 7.5, playerCount: 1, spacing: 18.0625, outerStop: 12 },
-    defense: { position: 22.5, playerCount: 2, spacing: 23.375, outerStop: 13 },
-    midfield: { position: 52.5, playerCount: 5, spacing: 12.75, outerStop: 10 },
-    offense: { position: 82.5, playerCount: 3, spacing: 18.0625, outerStop: 11 },
+    goalkeeper: { position: 7.5, playerCount: 1, spacing: 18.0625, outerStop: 20.25, rodLength: 109, rodDiameter: 1.6 },
+    defense: { position: 22.5, playerCount: 2, spacing: 23.375, outerStop: 2, rodLength: 128.5, rodDiameter: 1.6 },
+    midfield: { position: 52.5, playerCount: 5, spacing: 12.75, outerStop: 2, rodLength: 104.1, rodDiameter: 1.6 },
+    offense: { position: 82.5, playerCount: 3, spacing: 18.0625, outerStop: 2, rodLength: 117, rodDiameter: 1.6 },
   },
   figureWidth: 3.5,
   playerOneColor: '#d9480f',
@@ -174,24 +170,26 @@ function buildFigureOffsets(row: TableRowConfig, fieldWidthCm: number) {
   return buildCenteredOffsets(row.playerCount, spacingUnits);
 }
 
+function getRodExtensionUnits(rodLengthCm: number, fieldWidthCm: number) {
+  return Math.max(((rodLengthCm - fieldWidthCm) / 2 / Math.max(fieldWidthCm, 1)) * FIELD_HEIGHT_UNITS, 0);
+}
+
 export function buildTableLayoutFromDraft(
   draft: TableDraft,
   svgPreviews: Record<string, string>,
   layerData: Record<string, SvgLayerData>,
 ): StoredTableLayout {
   // Stangen-Überstand in Board-Einheiten bestimmt die nötige Randhöhe.
-  const rodExtensionUnits = Math.max(
-    ((draft.rodLength - draft.fieldWidth) / 2 / Math.max(draft.fieldWidth, 1)) * FIELD_HEIGHT_UNITS,
-    0,
-  );
+  const maxRodLength = Math.max(...Object.values(draft.rows).map((row) => row.rodLength));
+  const rodExtensionUnits = getRodExtensionUnits(maxRodLength, draft.fieldWidth);
   const FIELD_Y = rodExtensionUnits + FIELD_MARGIN;
   const BOARD_HEIGHT = FIELD_HEIGHT_UNITS + 2 * FIELD_Y;
   const fieldWidthUnits = BOARD_WIDTH - FIELD_X * 2 - 5.264;
   const fieldX = FIELD_X;
-  const frameX = fieldX - FRAME_MARGIN;
-  const frameY = FIELD_Y - FRAME_MARGIN;
-  const frameWidth = fieldWidthUnits + FRAME_MARGIN * 2;
-  const frameHeight = FIELD_HEIGHT_UNITS + FRAME_MARGIN * 2;
+  const frameX = fieldX + FRAME_MARGIN / 2;
+  const frameY = FIELD_Y + FRAME_MARGIN / 2;
+  const frameWidth = fieldWidthUnits - FRAME_MARGIN;
+  const frameHeight = FIELD_HEIGHT_UNITS - FRAME_MARGIN;
   const centerX = fieldX + fieldWidthUnits / 2;
   const centerY = FIELD_Y + FIELD_HEIGHT_UNITS / 2;
   const goalWidthUnits = toFieldUnits(draft.goalWidth, draft.fieldWidth, FIELD_HEIGHT_UNITS);
@@ -238,8 +236,6 @@ export function buildTableLayoutFromDraft(
         assetId: assets['field.primary'] ? 'field.primary' : null,
       },
       configuration: {
-        rodLengthCm: draft.rodLength,
-        rodDiameterCm: draft.rodDiameter,
         gripLengthCm: 7,
         gripWidthCm: 3,
         rows: draft.rows,
@@ -324,6 +320,8 @@ export function buildTableLayoutFromDraft(
         figureOffsets: buildFigureOffsets(row, draft.fieldWidth),
         rodColor: '#c9c2b8',
         figureColor: item.team === 'orange' ? draft.playerOneColor : draft.playerTwoColor,
+        rodLengthCm: row.rodLength,
+        rodDiameterCm: row.rodDiameter,
       };
     }),
   };

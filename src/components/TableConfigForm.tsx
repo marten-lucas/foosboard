@@ -15,10 +15,11 @@ type TableConfigFormProps = {
   setConfigStep: Dispatch<SetStateAction<number>>;
   tableDraft: TableDraft;
   setTableDraft: Dispatch<SetStateAction<TableDraft>>;
-  updateRowConfig: (row: TableRowKey, field: 'position' | 'playerCount' | 'spacing' | 'outerStop', value: string | number) => void;
+  updateRowConfig: (row: TableRowKey, field: 'position' | 'playerCount' | 'spacing' | 'outerStop' | 'rodLength' | 'rodDiameter', value: string | number) => void;
   handleSvgDrop: (key: string) => (files: File[]) => void;
   svgPreviews: Record<string, string>;
   hasFieldUpload: boolean;
+  fieldAspectWarning: string;
   fieldPreviewWidth: number;
   fieldPreviewHeight: number;
   rodPreviewWidth: number;
@@ -59,6 +60,7 @@ export function TableConfigForm({
   handleSvgDrop,
   svgPreviews,
   hasFieldUpload,
+  fieldAspectWarning,
   fieldPreviewWidth,
   fieldPreviewHeight,
   rodPreviewWidth,
@@ -85,6 +87,7 @@ export function TableConfigForm({
   const goalHeight = (tableDraft.goalWidth / Math.max(tableDraft.fieldWidth, 1)) * previewFieldHeight;
   const goalY = fieldPreviewY + (previewFieldHeight - goalHeight) / 2;
   const goalDepth = Math.max(frameThickness / 2, 1);
+  const frameInset = frameThickness / 2;
 
   return (
     <Drawer opened={opened} onClose={onClose} title="Tischkonfiguration" position="right" size={isMobile ? '100%' : '72%'}>
@@ -101,12 +104,15 @@ export function TableConfigForm({
                 <NumberInput label="Spielfeldlänge (innen)" suffix=" cm" value={tableDraft.fieldLength} onChange={(value) => setTableDraft((current) => ({ ...current, fieldLength: Number(value) || 0 }))} />
                 <NumberInput label="Spielfeldbreite (innen)" suffix=" cm" value={tableDraft.fieldWidth} onChange={(value) => setTableDraft((current) => ({ ...current, fieldWidth: Number(value) || 0 }))} />
                 <NumberInput label="Torbreite" suffix=" cm" value={tableDraft.goalWidth} onChange={(value) => setTableDraft((current) => ({ ...current, goalWidth: Number(value) || 0 }))} />
-                <NumberInput label="Stangenlänge" aria-label="Stangenlänge" suffix=" cm" value={tableDraft.rodLength} onChange={(value) => setTableDraft((current) => ({ ...current, rodLength: Number(value) || 0 }))} />
-                <NumberInput label="Stangendurchmesser" aria-label="Stangendurchmesser" suffix=" cm" value={tableDraft.rodDiameter} onChange={(value) => setTableDraft((current) => ({ ...current, rodDiameter: Number(value) || 0 }))} />
               </SimpleGrid>
 
               <Stack gap="xs" className="foosboard-upload-stack--fill">
                 <UploadDropzone label="Upload Spielfeld" onDrop={handleSvgDrop('field')} showPreview={false} testId="field-upload" />
+                {fieldAspectWarning ? (
+                  <Text size="xs" c="orange.7">
+                    {fieldAspectWarning}
+                  </Text>
+                ) : null}
                 <Paper withBorder p="md" className="foosboard-preview-card foosboard-preview-card--fill">
                   <div className="foosboard-table-overlay-preview" data-testid="field-preview-canvas" style={{ aspectRatio: `${fieldPreviewWidth} / ${fieldPreviewHeight}` }}>
                     <svg viewBox={`0 0 ${fieldPreviewWidth} ${fieldPreviewHeight}`} className="foosboard-table-preview" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
@@ -129,7 +135,7 @@ export function TableConfigForm({
                       {svgPreviews.field ? <div className="foosboard-svg-preview foosboard-svg-preview--fill foosboard-svg-preview--fit-width" dangerouslySetInnerHTML={{ __html: svgPreviews.field }} /> : null}
                     </div>
                     <svg viewBox={`0 0 ${fieldPreviewWidth} ${fieldPreviewHeight}`} className="foosboard-table-preview foosboard-table-preview--overlay" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
-                      <rect data-testid="field-preview-frame" x={previewFieldX} y={fieldPreviewY} width={previewFieldWidth} height={previewFieldHeight} fill="none" stroke="#111" strokeWidth={frameThickness} />
+                      <rect data-testid="field-preview-frame" x={previewFieldX + frameInset} y={fieldPreviewY + frameInset} width={previewFieldWidth - frameThickness} height={previewFieldHeight - frameThickness} fill="none" stroke="#111" strokeWidth={frameThickness} />
                     </svg>
                   </div>
                 </Paper>
@@ -149,11 +155,15 @@ export function TableConfigForm({
                   <Paper key={row.key} withBorder p="sm">
                     <Stack gap="xs">
                       <Text fw={600}>{row.label}</Text>
-                      <SimpleGrid cols={2} spacing="xs" verticalSpacing="xs">
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="xs" verticalSpacing="xs">
                         <NumberInput label="Position" suffix=" cm" value={tableDraft.rows[row.key as TableRowKey].position} onChange={(value) => updateRowConfig(row.key as TableRowKey, 'position', value)} />
                         <NumberInput label="Anzahl Puppen" value={tableDraft.rows[row.key as TableRowKey].playerCount} onChange={(value) => updateRowConfig(row.key as TableRowKey, 'playerCount', value)} />
                         <NumberInput label="Puppenabstand" suffix=" cm" value={tableDraft.rows[row.key as TableRowKey].spacing} onChange={(value) => updateRowConfig(row.key as TableRowKey, 'spacing', value)} />
                         <NumberInput label="Anschlag außen" suffix=" cm" value={tableDraft.rows[row.key as TableRowKey].outerStop} onChange={(value) => updateRowConfig(row.key as TableRowKey, 'outerStop', value)} />
+                      </SimpleGrid>
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" verticalSpacing="xs">
+                        <NumberInput label="Stangenlänge" suffix=" cm" value={tableDraft.rows[row.key as TableRowKey].rodLength} onChange={(value) => updateRowConfig(row.key as TableRowKey, 'rodLength', value)} />
+                        <NumberInput label="Stangendurchmesser" suffix=" cm" value={tableDraft.rows[row.key as TableRowKey].rodDiameter} onChange={(value) => updateRowConfig(row.key as TableRowKey, 'rodDiameter', value)} />
                       </SimpleGrid>
                     </Stack>
                   </Paper>
@@ -176,7 +186,6 @@ export function TableConfigForm({
                   frameThickness={frameThickness}
                   gripThickness={gripThickness}
                   gripLength={gripLength}
-                  rodDiameter={tableDraft.rodDiameter}
                   rows={tableDraft.rows}
                   fieldLengthCm={tableDraft.fieldLength}
                   fieldWidthCm={tableDraft.fieldWidth}
@@ -196,7 +205,7 @@ export function TableConfigForm({
 
           <Stepper.Step label="Puppen & Ball" description="Layer und Ball">
             <Stack mt="md" gap="md" className="foosboard-step-fill">
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 2 }}>
                 <NumberInput label="Breite der Puppe" suffix=" cm" value={tableDraft.figureWidth} onChange={(value) => setTableDraft((current) => ({ ...current, figureWidth: Number(value) || 0 }))} />
                 <ColorInput label="Farbe Spieler 1" format="hex" swatches={colorSwatches} value={tableDraft.playerOneColor} onChange={(value) => setTableDraft((current) => ({ ...current, playerOneColor: value }))} />
                 <ColorInput label="Farbe Spieler 2" format="hex" swatches={colorSwatches} value={tableDraft.playerTwoColor} onChange={(value) => setTableDraft((current) => ({ ...current, playerTwoColor: value }))} />
@@ -268,7 +277,7 @@ export function TableConfigForm({
                     figureStates={previewFigureStates}
                     figureColor={tableDraft.playerOneColor}
                     ballColor={tableDraft.ballColor}
-                    rodDiameterCm={tableDraft.rodDiameter}
+                    rodDiameterCm={tableDraft.rows.goalkeeper.rodDiameter}
                     figureWidthCm={tableDraft.figureWidth}
                     ballSizeCm={tableDraft.ballSize}
                     fieldWidthCm={tableDraft.fieldWidth}
@@ -296,7 +305,6 @@ export function TableConfigForm({
                   frameThickness={frameThickness}
                   gripThickness={gripThickness}
                   gripLength={gripLength}
-                  rodDiameter={tableDraft.rodDiameter}
                   rows={tableDraft.rows}
                   fieldLengthCm={tableDraft.fieldLength}
                   fieldWidthCm={tableDraft.fieldWidth}
