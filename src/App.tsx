@@ -11,6 +11,7 @@ import { getBallPossessionContext, hasBallCollision, resolveBallDrop } from './l
 import { buildRodMotionBounds, getMaxRodExtension, getRodGeometry } from './lib/rodLayout';
 import { TABLE_FRAME_THICKNESS_CM } from './lib/tableSurface';
 import { buildTableLayoutFromDraft, defaultTableDraft, type StoredTableLayout, type SvgLayerData, type TableDraft } from './lib/tableLayout';
+import type { ShotSelection, ShotTargetMode } from './lib/shotTargets';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
 type DragState =
@@ -26,6 +27,13 @@ type DragState =
   | null;
 
 type BallDragState = Extract<DragState, { kind: 'ball' }>;
+
+type PendingBallPressState = {
+  pointerId: number;
+  ballId: string;
+  origin: Point;
+  startPoint: Point;
+};
 
 type FigureStateKey = 'unten' | 'nachVorn' | 'nachHinten';
 
@@ -802,7 +810,9 @@ function buildConfiguratorStateFromLayout(layout: Pick<typeof boardConfig, 'lega
 function App() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState>(null);
+  const pendingBallPressRef = useRef<PendingBallPressState | null>(null);
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const isTouchInteraction = useMediaQuery('(pointer: coarse)');
   const isPortraitViewport = useMediaQuery('(orientation: portrait)');
   const selectedTable = boardConfig.legacy.name;
   const [configDrawerOpened, setConfigDrawerOpened] = useState(false);
@@ -994,6 +1004,7 @@ function App() {
   const forwardFigureBounds = getLayerBounds(tableDraft.figureLayerForward) ?? forwardFigurePlacement.bounds;
   const backwardFigureBounds = getLayerBounds(tableDraft.figureLayerBackward) ?? backwardFigurePlacement.bounds;
   const balls = useBoardStore((state) => state.balls);
+  const primaryBall = useBoardStore((state) => state.ball);
   const rods = useBoardStore((state) => state.rods);
   const shots = useBoardStore((state) => state.shots);
   const snapshots = useBoardStore((state) => state.snapshots);
@@ -1006,11 +1017,45 @@ function App() {
   const moveRod = useBoardStore((state) => state.moveRod);
   const cycleRodTilt = useBoardStore((state) => state.cycleRodTilt);
   const addShot = useBoardStore((state) => state.addShot);
+  const updateShot = useBoardStore((state) => state.updateShot);
   const removeShot = useBoardStore((state) => state.removeShot);
   const setActiveTool = useBoardStore((state) => state.setActiveTool);
+  const setActiveShotColor = useBoardStore((state) => state.setActiveShotColor);
+  const toggleFiveGoalPositions = useBoardStore((state) => state.toggleFiveGoalPositions);
   const saveSnapshot = useBoardStore((state) => state.saveSnapshot);
   const resetScene = useBoardStore((state) => state.resetScene);
   const hydrateScene = useBoardStore((state) => state.hydrateScene);
+  const fiveGoalPositions = useBoardStore((state) => state.fiveGoalPositions);
+
+  const [selectedShotBallId, setSelectedShotBallId] = useState<string | null>(null);
+  const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
+  const selectedShotBall = useMemo(
+    () => {
+      if (!selectedShotBallId) {
+        return null;
+      }
+
+      if (selectedShotBallId === 'primary-ball') {
+        return primaryBall;
+      }
+
+      return balls.find((ball) => ball.id === selectedShotBallId) ?? null;
+    },
+    [balls, primaryBall, selectedShotBallId],
+  );
+
+  const selectedShot = useMemo(
+    () => (selectedShotId ? shots.find((shot) => shot.id === selectedShotId) ?? null : null),
+    [selectedShotId, shots],
+  );
+
+  useEffect(() => {
+    if (selectedShot) {
+      setActiveShotColor(selectedShot.color);
+    }
+  }, [selectedShot?.color, selectedShot?.id, setActiveShotColor]);
+
+  const boardBalls = balls;
 
   const focusedBall = useMemo(() => {
     if (!balls.length) {
@@ -1091,6 +1136,30 @@ function App() {
       const drag = dragRef.current;
       const svg = svgRef.current;
       if (!drag || !svg || drag.pointerId !== event.pointerId) {
+        const pendingPress = pendingBallPressRef.current;
+        if (!drag && pendingPress && pendingPress.pointerId === event.pointerId) {
+          const currentPoint = pointFromEvent(event, svgRef.current, Boolean(isPortraitViewport));
+          const deltaX = currentPoint.x - pendingPress.startPoint.x;
+          const deltaY = currentPoint.y - pendingPress.startPoint.y;
+          const distance = Math.hypot(deltaX, deltaY);
+
+          if (distance > 6) {
+            const activeBallId = pendingPress.ballId;
+            setActiveBall(activeBallId);
+            setDraggingBallId(activeBallId);
+            dragRef.current = {
+              kind: 'ball',
+              pointerId: event.pointerId,
+              ballId: activeBallId,
+              source: 'board',
+              offsetX: pendingPress.startPoint.x - pendingPress.origin.x,
+              offsetY: pendingPress.startPoint.y - pendingPress.origin.y,
+              origin: pendingPress.origin,
+            };
+            pendingBallPressRef.current = null;
+            moveBall(activeBallId, getDraggedBallPoint(currentPoint, dragRef.current));
+          }
+        }
         return;
       }
 
@@ -1107,6 +1176,18 @@ function App() {
     const handleUp = (event: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) {
+        const pendingPress = pendingBallPressRef.current;
+        if (pendingPress && pendingPress.pointerId === event.pointerId) {
+          console.log('[foosboard] resolve pending press as selection', {
+            ballId: pendingPress.ballId,
+            pointerId: event.pointerId,
+            origin: pendingPress.origin,
+          });
+          setActiveBall(pendingPress.ballId);
+          setSelectedShotBallId(pendingPress.ballId);
+          setSelectedShotId(null);
+          pendingBallPressRef.current = null;
+        }
         return;
       }
 
@@ -1120,6 +1201,10 @@ function App() {
         const placement = resolveBallDrop(finalPoint);
 
         if (!placement) {
+          console.log('[foosboard] ball dropped outside table', {
+            ballId: drag.ballId,
+            finalPoint,
+          });
           const fallTarget = getBallFallTarget(finalPoint);
           if (fallTimerRef.current !== null) {
             window.clearTimeout(fallTimerRef.current);
@@ -1133,6 +1218,11 @@ function App() {
             fallTimerRef.current = null;
           }, 180);
         } else if (hasBallCollision(placement.point, storeBalls, drag.ballId)) {
+          console.log('[foosboard] ball collision on drop', {
+            ballId: drag.ballId,
+            source: drag.source,
+            placement: placement.point,
+          });
           if (drag.source === 'tray') {
             removeBall(drag.ballId);
           } else {
@@ -1140,14 +1230,22 @@ function App() {
             setActiveBall(drag.ballId);
           }
         } else {
+          console.log('[foosboard] ball placed', {
+            ballId: drag.ballId,
+            placement: placement.point,
+            source: drag.source,
+          });
           moveBall(drag.ballId, placement.point);
           setActiveBall(drag.ballId);
+          setSelectedShotBallId(drag.ballId);
+          setSelectedShotId(null);
         }
 
         setDraggingBallId(null);
       }
 
       dragRef.current = null;
+      pendingBallPressRef.current = null;
     };
 
     window.addEventListener('pointermove', handleMove);
@@ -1159,6 +1257,7 @@ function App() {
         window.clearTimeout(fallTimerRef.current);
         fallTimerRef.current = null;
       }
+      pendingBallPressRef.current = null;
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('pointercancel', handleUp);
@@ -1175,22 +1274,25 @@ function App() {
       return;
     }
 
-    if (activeTool === 'move') {
-      return;
-    }
-
-    const point = pointFromEvent(event, svgRef.current, Boolean(isPortraitViewport));
-
-    addShot({
-      kind: activeTool === 'pass' ? 'pass' : 'shot',
-      color: activeShotColor,
-      target: point,
+    console.log('[foosboard] board pointerdown', {
+      tool: activeTool,
+      targetTestId: target?.getAttribute('data-testid') ?? null,
     });
+
+    return;
   };
 
   const startBallDrag = (event: React.PointerEvent<SVGCircleElement>, ballId: string | null, origin: Point) => {
     event.preventDefault();
     event.stopPropagation();
+
+    console.log('[foosboard] startBallDrag', {
+      tool: activeTool,
+      ballId,
+      origin,
+      pointerId: event.pointerId,
+      touch: isTouchInteraction,
+    });
 
     const svg = svgRef.current;
     if (!svg) {
@@ -1198,6 +1300,32 @@ function App() {
     }
 
     const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg, Boolean(isPortraitViewport));
+
+    if (isTouchInteraction || activeTool !== 'move') {
+      if (ballId) {
+        setActiveBall(ballId);
+        setSelectedShotBallId(ballId);
+        setSelectedShotId(null);
+        console.log('[foosboard] select ball immediately', { ballId, tool: activeTool });
+      }
+
+      return;
+    }
+
+    if (ballId) {
+      pendingBallPressRef.current = {
+        pointerId: event.pointerId,
+        ballId,
+        origin,
+        startPoint: point,
+      };
+      setActiveBall(ballId);
+      setSelectedShotBallId(ballId);
+      setSelectedShotId(null);
+      console.log('[foosboard] pending board-ball press', { ballId, origin, pointerId: event.pointerId });
+      return;
+    }
+
     const spawnPoint = origin;
     const spawnedBallId = ballId ?? spawnBall(spawnPoint);
     const offsetX = point.x - spawnPoint.x;
@@ -1213,6 +1341,130 @@ function App() {
       offsetY,
       origin: spawnPoint,
     };
+  };
+
+  const handleSelectShotTarget = (selection: ShotSelection) => {
+    if (!selectedShotBall) {
+      console.log('[foosboard] shot target ignored, no selected ball', { selection, tool: activeTool });
+      return;
+    }
+
+    const shotPayload = {
+      kind: activeTool === 'pass' ? 'pass' : 'shot',
+      color: activeShotColor,
+      start: { x: selectedShotBall.x, y: selectedShotBall.y },
+      target: selection.target,
+      sourceBallId: selectedShotBallId ?? undefined,
+      targetGoalSide: selection.targetGoalSide,
+      targetMode: selection.targetMode,
+      targetSlot: selection.targetSlot,
+      shotStyle: selection.shotStyle,
+      collisionEnabled: selection.collisionEnabled,
+    };
+
+    if (selectedShot) {
+      console.log('[foosboard] update shot', {
+        shotId: selectedShot.id,
+        ballId: selectedShotBallId,
+        selection,
+        tool: activeTool,
+      });
+
+      updateShot(selectedShot.id, {
+        color: shotPayload.color,
+        target: shotPayload.target,
+        targetGoalSide: shotPayload.targetGoalSide,
+        targetMode: shotPayload.targetMode,
+        targetSlot: shotPayload.targetSlot,
+        shotStyle: shotPayload.shotStyle,
+        collisionEnabled: shotPayload.collisionEnabled,
+      });
+      return;
+    }
+
+    console.log('[foosboard] create shot', {
+      ballId: selectedShotBallId,
+      start: selectedShotBall,
+      selection,
+      tool: activeTool,
+    });
+
+    const shotId = addShot(shotPayload);
+    setSelectedShotBallId(selectedShotBallId);
+    setSelectedShotId(shotId);
+  };
+
+  const handleSelectShot = (shotId: string | null) => {
+    if (!shotId) {
+      setSelectedShotId(null);
+      return;
+    }
+
+    const shot = shots.find((item) => item.id === shotId);
+    if (!shot) {
+      setSelectedShotId(null);
+      return;
+    }
+
+    setSelectedShotBallId(shot.sourceBallId ?? null);
+    setSelectedShotId(shot.id);
+    setActiveShotColor(shot.color);
+  };
+
+  const handleChangeShotTargetMode = (mode: ShotTargetMode) => {
+    if (selectedShot) {
+      const normalizedSlot = normalizeShotTargetSlot(mode, selectedShot.targetSlot);
+      const goalSide = selectedShot.targetGoalSide;
+      const goal = goalSide === 'left'
+        ? {
+            x: boardConfig.fieldX - boardConfig.goalDepth,
+            y: boardConfig.fieldY,
+            width: boardConfig.goalDepth,
+            height: boardConfig.goalWidth,
+          }
+        : {
+            x: boardConfig.fieldX + boardConfig.fieldWidth,
+            y: boardConfig.fieldY,
+            width: boardConfig.goalDepth,
+            height: boardConfig.goalWidth,
+          };
+      const target = resolveShotTargetPoint(goal, goalSide, mode, normalizedSlot);
+
+      updateShot(selectedShot.id, {
+        target,
+        targetGoalSide: goalSide,
+        targetMode: mode,
+        targetSlot: normalizedSlot,
+      });
+      return;
+    }
+
+    if (fiveGoalPositions !== (mode === 5)) {
+      toggleFiveGoalPositions();
+    }
+  };
+
+  const handleChangeShotColor = (color: string) => {
+    setActiveShotColor(color);
+
+    if (selectedShot) {
+      updateShot(selectedShot.id, { color });
+    }
+  };
+
+  const handleDeleteSelectedShot = () => {
+    if (!selectedShotId) {
+      return;
+    }
+
+    removeShot(selectedShotId);
+
+    setSelectedShotId(null);
+  };
+
+  const handleCloseShotMenu = () => {
+    setSelectedShotBallId(null);
+    setSelectedShotId(null);
   };
 
   const startRodDrag = (rodId: RodConfig['id'], event: React.PointerEvent<SVGElement>) => {
@@ -1376,21 +1628,34 @@ function App() {
       />
 
       <AppShell.Main>
-        <main className="foosboard-stage">
+        <main className={`foosboard-stage${selectedShotBallId ? ' foosboard-stage--with-shot-drawer' : ''}`}>
           <BoardCanvas
             svgRef={svgRef}
             isPortraitViewport={Boolean(isPortraitViewport)}
-            balls={balls}
+            balls={boardBalls}
+            shots={shots}
             draggingBallId={draggingBallId}
             fallingBallId={fallingBallId}
             rods={visibleRods}
             savedFieldAsset={savedFieldAsset}
+            fiveGoalPositions={fiveGoalPositions}
+            selectedBallId={selectedShotBallId}
+            hasShotForBall={Boolean(selectedShot)}
+            activeShotColor={activeShotColor}
+            colorSwatches={colorSwatches}
             liveRodExtension={liveRodExtension}
             liveGripLength={liveGripLength}
             liveGripThickness={liveGripThickness}
             liveRodHandleWidth={liveRodHandleWidth}
             liveRodHandleHeight={liveRodHandleHeight}
             liveFigureStates={liveFigureStates}
+            selectedShotId={selectedShotId}
+            onSelectShotTarget={handleSelectShotTarget}
+            onChangeShotTargetMode={handleChangeShotTargetMode}
+            onSelectShot={handleSelectShot}
+            onDeleteShot={handleDeleteSelectedShot}
+            onChangeShotColor={handleChangeShotColor}
+            onCloseShotMenu={handleCloseShotMenu}
             onBoardPointerDown={handleBoardPointerDown}
             onStartBallDrag={startBallDrag}
             onStartRodDrag={startRodDrag}

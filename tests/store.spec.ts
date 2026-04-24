@@ -10,6 +10,7 @@ function resetBoardState() {
     ...createDefaultScene(),
     activeTool: 'move',
     activeBallId: null,
+    activePositionId: null,
     snapshots: [],
   });
 }
@@ -56,13 +57,14 @@ describe('board store', () => {
   it('adds and removes shot lines with stable labels', () => {
     const { addShot, removeShot } = useBoardStore.getState();
 
-    addShot({ kind: 'shot', color: '#ff7a3d', target: { x: 200, y: 200 } });
-    addShot({ kind: 'pass', color: '#4fa3f7', target: { x: 240, y: 210 } });
+    addShot({ kind: 'shot', color: '#ff7a3d', start: { x: 120, y: 180 }, target: { x: 200, y: 200 } });
+    addShot({ kind: 'pass', color: '#4fa3f7', start: { x: 120, y: 180 }, target: { x: 240, y: 210 } });
 
     const current = useBoardStore.getState().shots;
     expect(current).toHaveLength(2);
     expect(current[0].label).toBe('Schuss 1');
     expect(current[1].label).toBe('Pass 2');
+    expect(current[0].start).toEqual({ x: 120, y: 180 });
 
     removeShot(current[0].id);
     expect(useBoardStore.getState().shots).toHaveLength(1);

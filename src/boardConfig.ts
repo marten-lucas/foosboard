@@ -87,8 +87,15 @@ export interface ShotLine {
   id: string;
   kind: 'shot' | 'pass';
   color: string;
+  start: BallState;
   target: BallState;
   label: string;
+  sourceBallId?: string;
+  targetGoalSide?: 'left' | 'right';
+  targetMode?: 3 | 5;
+  targetSlot?: 'left' | 'middle-left' | 'middle' | 'middle-right' | 'right';
+  shotStyle?: 'straight' | 'bank-top' | 'bank-bottom';
+  collisionEnabled?: boolean;
 }
 
 export interface SavedScene {

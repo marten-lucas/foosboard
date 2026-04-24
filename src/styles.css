@@ -33,6 +33,10 @@ body {
     background: #d9d9d9;
 }
 
+.foosboard-stage--with-shot-drawer .foosboard-board-wrap {
+    padding-left: 372px;
+}
+
 .foosboard-board-wrap {
     width: 100%;
     height: 100%;
@@ -315,9 +319,272 @@ body {
     will-change: transform, opacity;
 }
 
+.foosboard-ball-token--selected {
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.88)) drop-shadow(0 0 10px rgba(255, 122, 61, 0.42));
+}
+
+.foosboard-shot-menu {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 340px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 12px 16px;
+    border: 1px solid rgba(17, 17, 17, 0.14);
+    border-radius: 0 18px 18px 0;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 16px 0 34px rgba(0, 0, 0, 0.18);
+    color: #1b1b1b;
+    backdrop-filter: blur(10px);
+    pointer-events: auto;
+    overflow-y: auto;
+    z-index: 220;
+}
+
+.foosboard-shot-menu__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.foosboard-shot-menu__eyebrow {
+    font-size: 11px;
+    line-height: 1.1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7a5a47;
+}
+
+.foosboard-shot-menu__title {
+    margin-top: 1px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.foosboard-shot-menu__subtitle {
+    margin-top: 2px;
+    font-size: 11px;
+    color: #6a6a6a;
+}
+
+.foosboard-shot-menu__icon-button {
+    border: 0;
+    border-radius: 999px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(17, 17, 17, 0.06);
+    color: inherit;
+    cursor: pointer;
+}
+
+.foosboard-shot-menu__section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.foosboard-shot-menu__section--shots {
+    gap: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.foosboard-shot-menu__section--color {
+    margin-top: auto;
+}
+
+.foosboard-shot-menu__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4f4f4f;
+}
+
+.foosboard-shot-menu__row,
+.foosboard-shot-menu__stack {
+    display: grid;
+    gap: 6px;
+}
+
+.foosboard-shot-menu__row--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.foosboard-shot-menu__row--split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.foosboard-shot-menu__row--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.foosboard-shot-menu__row--five {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.foosboard-shot-menu__stack {
+    grid-template-columns: 1fr;
+}
+
+.foosboard-shot-menu__tab-panel {
+    padding-top: 8px;
+}
+
+.foosboard-shot-menu__button {
+    min-height: 32px;
+    padding: 0 9px;
+    border: 1px solid rgba(17, 17, 17, 0.14);
+    border-radius: 12px;
+    background: rgba(250, 250, 250, 0.98);
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.foosboard-shot-menu__button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 122, 61, 0.45);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.foosboard-shot-menu__button--wide {
+    justify-content: flex-start;
+}
+
+.foosboard-shot-menu__button--target {
+    min-height: 34px;
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+.foosboard-shot-menu__button--active {
+    border-color: rgba(255, 122, 61, 0.78);
+    background: linear-gradient(180deg, rgba(255, 122, 61, 0.18), rgba(255, 122, 61, 0.08));
+    color: #8f3d19;
+    box-shadow: inset 0 0 0 1px rgba(255, 122, 61, 0.08);
+}
+
+.foosboard-shot-menu__button--ghost {
+    width: 100%;
+    background: rgba(17, 17, 17, 0.04);
+}
+
+.foosboard-shot-menu__button--ghost:not(:disabled):hover {
+    border-color: rgba(183, 28, 28, 0.42);
+    color: #b71c1c;
+}
+
+.foosboard-shot-menu__button--full {
+    width: 100%;
+}
+
+.foosboard-shot-menu__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+    box-shadow: none;
+  }
+
+.foosboard-shot-menu__footer {
+    margin-top: 2px;
+}
+
+.foosboard-shot-menu__list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.foosboard-shot-menu__shot-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid rgba(17, 17, 17, 0.12);
+    border-radius: 12px;
+    background: rgba(250, 250, 250, 0.98);
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.foosboard-shot-menu__shot-item--active {
+    border-color: rgba(255, 122, 61, 0.78);
+    background: linear-gradient(180deg, rgba(255, 122, 61, 0.18), rgba(255, 122, 61, 0.08));
+}
+
+.foosboard-shot-menu__shot-item-label {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.foosboard-shot-menu__shot-item-meta {
+    font-size: 11px;
+    color: #666;
+}
+
+.foosboard-shot-menu__empty {
+    padding: 10px 11px;
+    border: 1px dashed rgba(17, 17, 17, 0.14);
+    border-radius: 12px;
+    color: #6a6a6a;
+    font-size: 12px;
+}
+
+.foosboard-shot-menu__color-input {
+    width: 100%;
+}
+
+.foosboard-shot-menu__color-input .mantine-Input-input {
+    min-height: 32px;
+}
+
+@media (max-width: 1100px) {
+    .foosboard-stage--with-shot-drawer .foosboard-board-wrap {
+        padding-left: 24px;
+    }
+
+    .foosboard-shot-menu {
+        width: 320px;
+    }
+}
+
+@media (max-width: 760px) {
+    .foosboard-stage--with-shot-drawer .foosboard-board-wrap {
+        padding-left: 12px;
+    }
+
+    .foosboard-shot-menu {
+        width: min(100vw, 320px);
+    }
+}
+
 .foosboard-ball-token--dragging {
     transform: scale(1.12);
     filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.22));
+}
+
+.foosboard-shot-line {
+    pointer-events: none;
+}
+
+.foosboard-shot-overlay rect {
+    mix-blend-mode: screen;
 }
 
 .foosboard-ball-token--dropping {

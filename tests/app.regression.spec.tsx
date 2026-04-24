@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { within } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../src/App';
@@ -17,6 +18,7 @@ function resetBoardState() {
     ...createDefaultScene(),
     activeTool: 'move',
     activeBallId: null,
+    activePositionId: null,
     snapshots: [],
   });
 }
@@ -90,14 +92,71 @@ describe('app regression coverage', () => {
   it('creates and removes a shot line through the UI', async () => {
     const user = userEvent.setup();
     renderApp();
-    const svg = mockSvgLayout();
+    mockSvgLayout();
 
-    await user.click(screen.getByText('Schuss'));
-    fireEvent.pointerDown(svg, { clientX: 420, clientY: 180, pointerId: 1 });
+    const trayLayout = getBallTrayLayout();
+    const leftTray = await screen.findByTestId('ball-tray-left');
+    const trayBall = leftTray.querySelector('circle');
+    if (!trayBall) {
+      throw new Error('Tray ball not found');
+    }
 
-    expect(await screen.findByText('Schuss 1')).toBeInTheDocument();
+    fireEvent.pointerDown(trayBall, {
+      clientX: trayLayout.trays[0].balls[0].point.x,
+      clientY: trayLayout.trays[0].balls[0].point.y,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(window, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 1,
+    });
 
-    await user.click(screen.getByLabelText('Linie löschen'));
+    const placedBallId = useBoardStore.getState().balls[0]?.id;
+    if (!placedBallId) {
+      throw new Error('Placed ball not found');
+    }
+
+    const boardBallCircle = screen.getByTestId(`ball-hitbox-${placedBallId}`);
+
+    fireEvent.pointerDown(boardBallCircle, {
+      clientX: boardConfig.centerX,
+      clientY: boardConfig.centerY,
+      pointerId: 2,
+    });
+
+    const drawer = await screen.findByTestId('shot-drawer');
+    expect(drawer).toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole('tab', { name: '5 Torpositionen' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Bande oben' }));
+    await user.click(within(drawer).getByRole('button', { name: 'An' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Mitte links' }));
+
+    const createdShot = useBoardStore.getState().shots[0];
+    expect(createdShot).toMatchObject({
+      sourceBallId: placedBallId,
+      targetGoalSide: 'left',
+      targetMode: 5,
+      targetSlot: 'middle-left',
+      shotStyle: 'bank-top',
+      collisionEnabled: true,
+    });
+
+    const shotElement = screen.getByTestId(`shot-${createdShot.id}`);
+    expect(shotElement).toHaveAttribute('data-shot-style', 'bank-top');
+    expect(shotElement.querySelector('path')).not.toBeNull();
+
+    expect(within(drawer).getByRole('button', { name: /Schuss 1/ })).toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole('button', { name: /Schuss 1/ }));
+    await user.click(within(drawer).getByRole('button', { name: 'Ausgewählten Schuss löschen' }));
+
     await waitFor(() => {
       expect(screen.queryByText('Schuss 1')).not.toBeInTheDocument();
     });
@@ -131,24 +190,17 @@ describe('app regression coverage', () => {
     });
 
     expect(useBoardStore.getState().balls).toHaveLength(1);
+    expect(await screen.findByTestId('shot-drawer')).toBeInTheDocument();
 
-    const placedBall = document.querySelector('[data-testid^="ball-"]:not([data-testid^="ball-tray-"])') as SVGElement | null;
-    expect(placedBall).not.toBeNull();
-
-    if (!placedBall) {
-      throw new Error('Placed ball not found');
-    }
-
-    const placedBallCircle = placedBall.querySelector('circle');
-    if (!placedBallCircle) {
-      throw new Error('Placed ball circle not found');
-    }
+    const placedBallCircle = screen.getByTestId(`ball-hitbox-${useBoardStore.getState().balls[0].id}`);
 
     fireEvent.pointerDown(placedBallCircle, {
       clientX: boardConfig.centerX,
       clientY: boardConfig.centerY,
       pointerId: 12,
     });
+
+    expect(await screen.findByTestId('shot-drawer')).toBeInTheDocument();
     fireEvent.pointerMove(window, {
       clientX: -200,
       clientY: -200,

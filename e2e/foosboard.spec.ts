@@ -66,6 +66,53 @@ test('supports tactical interactions for lines and toggles', async ({ page }) =>
   await expect(page.getByText(/front|back/i)).toHaveCount(1);
 });
 
+test('headed: shows the shot context menu after clicking a board ball', async ({ page }) => {
+  const trayBall = page.getByTestId('ball-tray-left').locator('circle').first();
+  const trayBox = await trayBall.boundingBox();
+  const boardBox = await page.getByTestId('board-svg').boundingBox();
+
+  if (!trayBox || !boardBox) {
+    throw new Error('Could not determine tray or board geometry');
+  }
+
+  const trayCenter = {
+    x: trayBox.x + trayBox.width / 2,
+    y: trayBox.y + trayBox.height / 2,
+  };
+  const boardCenter = {
+    x: boardBox.x + boardBox.width / 2,
+    y: boardBox.y + boardBox.height / 2,
+  };
+
+  await page.mouse.move(trayCenter.x, trayCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(boardCenter.x, boardCenter.y);
+  await page.mouse.up();
+
+  const placedBall = page.locator('[data-testid^="ball-hitbox-"]').first();
+  await expect(placedBall).toBeVisible();
+
+  const placedBallBox = await placedBall.boundingBox();
+  if (!placedBallBox) {
+    throw new Error('Placed ball not found');
+  }
+
+  await page.mouse.move(placedBallBox.x + placedBallBox.width / 2, placedBallBox.y + placedBallBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  const drawer = page.getByTestId('shot-drawer');
+  await expect(drawer).toBeVisible();
+
+  await drawer.getByRole('tab', { name: '5 Torpositionen' }).click();
+  await drawer.getByRole('button', { name: 'Bande unten' }).click();
+  await drawer.getByRole('button', { name: 'Aus', exact: true }).click();
+  await drawer.getByRole('button', { name: 'Mitte rechts' }).click();
+
+  await expect(drawer.getByRole('button', { name: /Schuss 1/ })).toBeVisible();
+  await expect(page.locator('[data-shot-style="bank-bottom"] path')).toHaveCount(1);
+});
+
 test('saves and shares snapshots', async ({ page }) => {
   await page.getByLabel('Snapshot-Name').fill('Regression Szene', { force: true });
   await page.getByText('Speichern').dispatchEvent('click');

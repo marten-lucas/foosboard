@@ -1,13 +1,16 @@
 import type { RefObject } from 'react';
-import { boardConfig, normalizeTiltMode, type BallTokenState, type RodConfig, type RodState } from '../boardConfig';
+import { boardConfig, normalizeTiltMode, type BallTokenState, type RodConfig, type RodState, type ShotLine } from '../boardConfig';
 import { defaultTableDraft } from '../lib/tableLayout';
 import { getRodGeometry, getRodRowKey } from '../lib/rodLayout';
+import { buildShotPathData, getShotStrokeWidth } from '../lib/shotGeometry';
 import { buildTableSurfaceGeometry, TABLE_FRAME_THICKNESS_CM } from '../lib/tableSurface';
 import { TableGoalVisuals } from './TableGoalVisuals';
 import { SharedVisualDefs } from './SharedVisualDefs';
+import { ShotContextMenu } from './ShotContextMenu';
 import { buildCenteredOffsets } from '../lib/rowFigureLayout';
 import { getBallTrayLayout } from '../lib/ballLayout';
 import type { Point } from '../geometry';
+import type { ShotSelection, ShotTargetMode } from '../lib/shotTargets';
 
 type FigureStateKey = 'unten' | 'nachVorn' | 'nachHinten';
 
@@ -29,16 +32,29 @@ type BoardCanvasProps = {
   svgRef: RefObject<SVGSVGElement | null>;
   isPortraitViewport: boolean;
   balls: BallTokenState[];
+  shots: ShotLine[];
   draggingBallId: string | null;
   fallingBallId: string | null;
   rods: Record<RodConfig['id'], RodState>;
   savedFieldAsset: string;
+  fiveGoalPositions: boolean;
+  selectedBallId: string | null;
+  hasShotForBall: boolean;
+  activeShotColor: string;
+  colorSwatches: string[];
   liveRodExtension: number;
   liveGripLength: number;
   liveGripThickness: number;
   liveRodHandleWidth: number;
   liveRodHandleHeight: number;
   liveFigureStates: Record<FigureStateKey, LiveFigureState>;
+  selectedShotId: string | null;
+  onSelectShotTarget: (selection: ShotSelection) => void;
+  onChangeShotTargetMode: (mode: ShotTargetMode) => void;
+  onSelectShot: (shotId: string | null) => void;
+  onDeleteShot: () => void;
+  onChangeShotColor: (color: string) => void;
+  onCloseShotMenu: () => void;
   onBoardPointerDown: (event: React.PointerEvent<SVGSVGElement>) => void;
   onStartBallDrag: (event: React.PointerEvent<SVGCircleElement>, ballId: string | null, origin: Point) => void;
   onStartRodDrag: (rodId: RodConfig['id'], event: React.PointerEvent<SVGRectElement>) => void;
@@ -72,16 +88,29 @@ export function BoardCanvas({
   svgRef,
   isPortraitViewport,
   balls,
+  shots,
   draggingBallId,
   fallingBallId,
   rods,
   savedFieldAsset,
+  fiveGoalPositions,
+  selectedBallId,
+  hasShotForBall,
+  activeShotColor,
+  colorSwatches,
   liveRodExtension,
   liveGripLength,
   liveGripThickness,
   liveRodHandleWidth,
   liveRodHandleHeight,
   liveFigureStates,
+  selectedShotId,
+  onSelectShotTarget,
+  onChangeShotTargetMode,
+  onSelectShot,
+  onDeleteShot,
+  onChangeShotColor,
+  onCloseShotMenu,
   onBoardPointerDown,
   onStartBallDrag,
   onStartRodDrag,
@@ -100,9 +129,30 @@ export function BoardCanvas({
     goalDepth: boardConfig.goalDepth,
   });
   const ballTray = getBallTrayLayout();
+  const renderBalls = balls;
+  const selectedBall = selectedBallId ? balls.find((ball) => ball.id === selectedBallId) ?? null : null;
 
   return (
     <div className={`foosboard-board-wrap${isPortraitViewport ? ' foosboard-board-wrap--portrait' : ''}`}>
+      {selectedBall ? (
+        <ShotContextMenu
+          ball={selectedBall}
+          shots={shots}
+          selectedShotId={selectedShotId}
+          activeShotColor={activeShotColor}
+          colorSwatches={colorSwatches}
+          goals={tableSurface.goals}
+          bounds={tableSurface.frame}
+          fiveGoalPositions={fiveGoalPositions}
+          hasShotForBall={hasShotForBall}
+          onChangeTargetMode={onChangeShotTargetMode}
+          onChangeShotColor={onChangeShotColor}
+          onCreateShot={onSelectShotTarget}
+          onDeleteShot={onDeleteShot}
+          onClose={onCloseShotMenu}
+          onSelectShot={onSelectShot}
+        />
+      ) : null}
       <svg
         ref={svgRef}
         data-testid="board-svg"
@@ -126,7 +176,52 @@ export function BoardCanvas({
             <div className="foosboard-live-field-asset" dangerouslySetInnerHTML={{ __html: savedFieldAsset }} />
           </foreignObject>
         ) : null}
-        {balls.map((ball) => (
+        {shots.map((shot) => {
+          const selected = selectedShotId === shot.id;
+          const strokeWidth = getShotStrokeWidth() + (selected ? 2 : 0);
+          const pathData = buildShotPathData(shot);
+
+          return (
+            <g
+              key={shot.id}
+              data-testid={`shot-${shot.id}`}
+              data-shot-style={shot.shotStyle}
+              data-selected={selected ? 'true' : 'false'}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onSelectShot(shot.id);
+              }}
+              cursor="pointer"
+            >
+              {shot.shotStyle === 'bank-top' || shot.shotStyle === 'bank-bottom' ? (
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={shot.color}
+                  strokeWidth={strokeWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  opacity={selected ? 1 : 0.92}
+                />
+              ) : (
+                <line
+                  x1={shot.start.x}
+                  y1={shot.start.y}
+                  x2={shot.target.x}
+                  y2={shot.target.y}
+                  stroke={shot.color}
+                  strokeWidth={strokeWidth}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                  opacity={selected ? 1 : 0.92}
+                />
+              )}
+              <circle cx={shot.target.x} cy={shot.target.y} r={selected ? 4.5 : 3.2} fill={shot.color} opacity={selected ? 1 : 0.92} />
+            </g>
+          );
+        })}
+        {renderBalls.map((ball) => (
           <g
             key={ball.id}
             className={[
@@ -357,7 +452,7 @@ export function BoardCanvas({
 
         <TableGoalVisuals goals={tableSurface.goals} />
 
-        {balls.map((ball) => (
+        {renderBalls.map((ball) => (
           <g
             key={`${ball.id}-hitbox`}
             data-testid={`ball-${ball.id}`}
@@ -365,6 +460,7 @@ export function BoardCanvas({
             style={{ transform: `translate(${ball.x}px, ${ball.y}px)` }}
           >
             <circle
+              data-testid={`ball-hitbox-${ball.id}`}
               cx={0}
               cy={0}
               r={boardConfig.ballRadius + 6}
@@ -372,6 +468,7 @@ export function BoardCanvas({
               stroke="rgba(0,0,0,0.001)"
               strokeWidth={1}
               cursor="grab"
+              style={{ pointerEvents: 'all' }}
               onPointerDown={(event) => onStartBallDrag(event, ball.id, { x: ball.x, y: ball.y })}
             />
           </g>
