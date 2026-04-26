@@ -54,16 +54,55 @@ test('renders the modern tactics board with legacy dimensions', async ({ page })
 });
 
 test('supports tactical interactions for lines and toggles', async ({ page }) => {
-  await page.getByText('Schuss', { exact: true }).dispatchEvent('click');
-  await page.getByTestId('board-svg').click({ position: { x: 470, y: 170 } });
-  await expect(page.getByText('Schuss 1')).toHaveCount(1);
+  const trayBall = page.getByTestId('ball-tray-left').locator('circle').first();
+  const trayBox = await trayBall.boundingBox();
+  const boardBox = await page.getByTestId('board-svg').boundingBox();
 
+  if (!trayBox || !boardBox) {
+    throw new Error('Could not determine tray or board geometry');
+  }
+
+  const trayCenter = {
+    x: trayBox.x + trayBox.width / 2,
+    y: trayBox.y + trayBox.height / 2,
+  };
+  const boardCenter = {
+    x: boardBox.x + boardBox.width / 2,
+    y: boardBox.y + boardBox.height / 2,
+  };
+
+  await page.mouse.move(trayCenter.x, trayCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(boardCenter.x, boardCenter.y);
+  await page.mouse.up();
+
+  const placedBall = page.locator('[data-testid^="ball-hitbox-"]').first();
+  await expect(placedBall).toBeVisible();
+
+  const placedBallBox = await placedBall.boundingBox();
+  if (!placedBallBox) {
+    throw new Error('Placed ball not found');
+  }
+
+  await page.mouse.move(placedBallBox.x + placedBallBox.width / 2, placedBallBox.y + placedBallBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  const drawer = page.getByTestId('shot-drawer');
+  await expect(drawer).toBeVisible();
+
+  await page.getByText('Schuss', { exact: true }).dispatchEvent('click');
+  await drawer.getByRole('tab', { name: '5 Torpositionen' }).click();
+  await drawer.getByRole('button', { name: 'Mitte rechts' }).click();
+  await expect(drawer.getByRole('button', { name: /Schuss 1/ })).toBeVisible();
+
+  await drawer.getByRole('button', { name: 'Neuer Schuss' }).click();
   await page.getByText('Pass', { exact: true }).dispatchEvent('click');
-  await page.getByTestId('board-svg').click({ position: { x: 330, y: 250 } });
-  await expect(page.getByText('Pass 2')).toHaveCount(1);
+  await drawer.getByRole('button', { name: 'Mitte', exact: true }).click();
+  await expect(drawer.getByRole('button', { name: /Pass 2/ })).toBeVisible();
 
   await page.getByText('Kippen').first().dispatchEvent('click');
-  await expect(page.getByText(/front|back/i)).toHaveCount(1);
+  await expect(page.getByText(/front|back/i).first()).toBeVisible();
 });
 
 test('headed: shows the shot context menu after clicking a board ball', async ({ page }) => {
