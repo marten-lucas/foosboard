@@ -48,7 +48,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run automated tests
-        run: npm run test:all
+        run: npm run test:unit && npx playwright test --project=chromium
 
       - name: Build production bundle
         run: npm run build
