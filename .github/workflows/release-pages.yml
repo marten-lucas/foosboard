@@ -128,7 +128,8 @@ jobs:
 
   deploy-pages:
     needs: build
-    if: github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    if: github.ref == 'refs/heads/master' || (github.event_name ==
+      'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
     environment:
       name: github-pages

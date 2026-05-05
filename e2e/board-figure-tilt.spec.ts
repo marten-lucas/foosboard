@@ -18,14 +18,16 @@ test('clicking and tapping a board figure cycles the rod tilt', async ({ page })
 
   const rodId = 'P2_2';
   const figure = page.locator(`[data-testid="rod-${rodId}"] foreignObject`).first();
+  // The tilt-toggle rect overlays each figure; target it directly to avoid cross-browser z-order issues
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
 
   await expect(figure).toBeVisible();
   await expect(readTilt(page, rodId)).resolves.toBe('neutral');
 
-  await figure.click({ force: true });
+  await tiltToggle.click();
   await expect(readTilt(page, rodId)).resolves.toBe('front');
 
-  const box = await figure.boundingBox();
+  const box = await tiltToggle.boundingBox();
   expect(box).not.toBeNull();
   await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect(readTilt(page, rodId)).resolves.toBe('back');
@@ -33,12 +35,12 @@ test('clicking and tapping a board figure cycles the rod tilt', async ({ page })
   const figureOpacity = await page.locator(`[data-testid="rod-${rodId}"] foreignObject`).first().evaluate((element) => getComputedStyle(element).opacity);
   expect(figureOpacity).toBe('1');
 
-  await figure.click({ force: true });
+  await tiltToggle.click();
   await expect(readTilt(page, rodId)).resolves.toBe('hochgestellt');
 
   const highOpacity = await page.locator(`[data-testid="rod-${rodId}"] foreignObject`).first().evaluate((element) => getComputedStyle(element).opacity);
   expect(highOpacity).toBe('0.5');
 
-  await figure.click({ force: true });
+  await tiltToggle.click();
   await expect(readTilt(page, rodId)).resolves.toBe('neutral');
 });

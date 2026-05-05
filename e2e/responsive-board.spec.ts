@@ -99,8 +99,9 @@ for (const viewportCase of VIEWPORT_CASES) {
         expect(bodyBox!.y + bodyBox!.height, `${viewportCase.name}/${rodId}: rod below viewport`).toBeLessThanOrEqual(metrics.viewport.height);
 
         if (viewportCase.portrait) {
-          expect(bodyBox!.x, `${viewportCase.name}/${rodId}: rod left of viewport`).toBeGreaterThanOrEqual(0);
-          expect(bodyBox!.x + bodyBox!.width, `${viewportCase.name}/${rodId}: rod right of viewport`).toBeLessThanOrEqual(metrics.viewport.width);
+          // Allow 1px sub-pixel tolerance for WebKit rounding differences
+          expect(bodyBox!.x, `${viewportCase.name}/${rodId}: rod left of viewport`).toBeGreaterThanOrEqual(-1);
+          expect(bodyBox!.x + bodyBox!.width, `${viewportCase.name}/${rodId}: rod right of viewport`).toBeLessThanOrEqual(metrics.viewport.width + 1);
           expect(bodyBox!.x, `${viewportCase.name}/${rodId}: rod no longer overhangs field on the left`).toBeLessThan(fieldBox.left);
           expect(bodyBox!.x + bodyBox!.width, `${viewportCase.name}/${rodId}: rod no longer overhangs field on the right`).toBeGreaterThan(fieldBox.right);
         } else {

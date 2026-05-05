@@ -221,7 +221,8 @@ test('creates a table configuration from SVG test data and keeps previews contai
 
   expect(fieldScaling.preserveAspectRatio).toMatch(/meet/i);
   expect(fieldScaling.fillsWidth || fieldScaling.fillsHeight).toBeTruthy();
-  expect(fieldScaling.frameRatio).toBeCloseTo(120 / 68, 1);
+  // Allow ±0.1 tolerance for cross-browser SVG bounding-rect differences (Firefox ~3-4% off)
+  expect(Math.abs(fieldScaling.frameRatio - 120 / 68)).toBeLessThan(0.1);
 
   await page.getByRole('button', { name: /weiter/i }).click();
 

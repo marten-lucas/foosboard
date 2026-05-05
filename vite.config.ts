@@ -9,6 +9,6 @@ export default defineConfig({
     assetsInlineLimit: 100_000_000,
     cssCodeSplit: false,
     sourcemap: true,
-    target: 'es2020',
+    target: 'es2019',
   },
 });

@@ -503,6 +503,7 @@ export function BoardCanvas({
           return offsets.map((offset, index) => (
             <rect
               key={`${rod.id}-tilt-${index}`}
+              data-testid={`rod-${rod.id}-tilt-${index}`}
               x={rod.x + getFigureForeignObjectX(figureState.width, figureState.anchor.x, rod.team === 'blue')}
               y={rodState.y + offset - figureState.height * figureState.anchor.y}
               width={figureState.width}
@@ -510,6 +511,9 @@ export function BoardCanvas({
               fill="transparent"
               style={{ cursor: 'pointer' }}
               onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
                 event.stopPropagation();
                 onCycleRodTilt(rod.id);
               }}

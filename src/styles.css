@@ -12,12 +12,18 @@ body,
 
 body {
     overflow: hidden;
+    /* Prevent iOS rubber-band scroll from interfering with drag */
+    overscroll-behavior: none;
+    /* Prevent long-press callout on iOS */
+    -webkit-touch-callout: none;
 }
 
 .foosboard-header-bar {
     position: fixed;
     top: 12px;
+    top: calc(12px + env(safe-area-inset-top));
     left: 12px;
+    left: calc(12px + env(safe-area-inset-left));
     z-index: 200;
     display: flex;
     align-items: center;
@@ -26,11 +32,17 @@ body {
 .foosboard-stage {
     width: 100vw;
     height: 100vh;
+    /* dvh collapses the address bar on mobile browsers; fall back to vh */
+    height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: visible;
     background: #d9d9d9;
+    /* Account for iPhone notch / home indicator */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 .foosboard-stage--with-shot-drawer .foosboard-board-wrap {
@@ -52,11 +64,18 @@ body {
     width: min(100%, 980px);
     height: auto;
     max-height: calc(100vh - 200px);
+    /* Use dvh where available */
+    max-height: calc(100dvh - 200px);
     display: block;
     overflow: visible;
     transform: rotate(0deg);
     transform-origin: center;
     transition: transform 220ms ease, width 220ms ease, max-height 220ms ease, max-width 220ms ease;
+    /* Prevent text selection highlight during drag on all browsers */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Prevent iOS tap highlight flash on SVG elements */
+    -webkit-tap-highlight-color: transparent;
 }
 
 .foosboard-board-wrap--portrait {
@@ -65,7 +84,9 @@ body {
 
 .foosboard-board-svg--portrait {
     width: min(calc(100vh - 220px), 760px);
+    width: min(calc(100dvh - 220px), 760px);
     max-width: calc(100vh - 220px);
+    max-width: calc(100dvh - 220px);
     max-height: none;
     transform: rotate(90deg) scale(0.83);
     transform-origin: center;

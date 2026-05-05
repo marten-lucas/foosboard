@@ -1457,6 +1457,9 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
 
+    // Capture pointer so pointermove/pointerup keep firing on iOS Safari
+    try { (event.currentTarget as Element).setPointerCapture(event.pointerId); } catch { /* ignore */ }
+
     console.log('[foosboard] startBallDrag', {
       tool: activeTool,
       ballId,
@@ -1620,6 +1623,10 @@ function App() {
   const startRodDrag = (rodId: RodConfig['id'], event: React.PointerEvent<SVGElement>) => {
     event.preventDefault();
     event.stopPropagation();
+
+    // Capture pointer so pointermove/pointerup keep firing even if finger leaves the element
+    // (critical for iOS Safari where pointer events are lost without capture)
+    try { (event.currentTarget as Element).setPointerCapture(event.pointerId); } catch { /* ignore */ }
 
     const svg = svgRef.current;
     if (!svg) {
