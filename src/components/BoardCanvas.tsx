@@ -202,6 +202,7 @@ export function BoardCanvas({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
+                  clipPath="url(#fieldClip)"
                   opacity={selected ? 1 : 0.92}
                 />
               ) : (

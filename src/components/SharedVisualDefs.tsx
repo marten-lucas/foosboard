@@ -1,3 +1,5 @@
+import { boardConfig } from '../boardConfig';
+
 type SharedVisualDefsProps = {
   includeShadow?: boolean;
 };
@@ -28,6 +30,9 @@ export function SharedVisualDefs({ includeShadow = false }: SharedVisualDefsProp
         <stop offset="60%" stopColor="#1a1a1a" />
         <stop offset="100%" stopColor="#080808" />
       </linearGradient>
+      <clipPath id="fieldClip">
+        <rect x={boardConfig.fieldX} y={boardConfig.fieldY} width={boardConfig.fieldWidth} height={boardConfig.fieldHeight} />
+      </clipPath>
     </>
   );
 }

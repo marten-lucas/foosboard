@@ -204,6 +204,10 @@ export const useBoardStore = create<BoardStore>()(
       },
       moveBall: (ballId, point) =>
         set((state) => {
+          const prevBall = state.balls.find((b) => b.id === ballId);
+          const dx = prevBall ? point.x - prevBall.x : 0;
+          const dy = prevBall ? point.y - prevBall.y : 0;
+
           const balls = state.balls.map((ball) =>
             ball.id === ballId
               ? {
@@ -215,13 +219,28 @@ export const useBoardStore = create<BoardStore>()(
           );
           const ball = state.activeBallId === ballId ? { x: point.x, y: point.y } : state.ball;
 
+          const isPrimaryBall = state.activeBallId === ballId;
+          const shots = state.shots.map((shot) => {
+            const matchesById = shot.sourceBallId === ballId;
+            const matchesPrimary = isPrimaryBall && shot.sourceBallId === 'primary-ball';
+            if (matchesById || matchesPrimary) {
+              return {
+                ...shot,
+                start: { x: shot.start.x + dx, y: shot.start.y + dy },
+              };
+            }
+            return shot;
+          });
+
           return {
             balls,
             ball,
+            shots,
             snapshots: syncActivePositionScene(state.snapshots, state.activePositionId, {
               ...(getSerializableScene(state as BoardStore) as SerializableScene),
               balls,
               ball,
+              shots,
             }),
           };
         }),

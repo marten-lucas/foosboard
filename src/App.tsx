@@ -11,6 +11,7 @@ import { getBallPossessionContext, hasBallCollision, resolveBallDrop } from './l
 import { buildRodMotionBounds, getMaxRodExtension, getRodGeometry } from './lib/rodLayout';
 import { TABLE_FRAME_THICKNESS_CM } from './lib/tableSurface';
 import { buildTableLayoutFromDraft, defaultTableDraft, type StoredTableLayout, type SvgLayerData, type TableDraft } from './lib/tableLayout';
+import { normalizeShotTargetSlot, resolveShotTargetPoint } from './lib/shotTargets';
 import type { ShotSelection, ShotTargetMode } from './lib/shotTargets';
 import { getSerializableScene, useBoardStore } from './store/boardStore';
 
@@ -1412,31 +1413,10 @@ function App() {
   };
 
   const handleChangeShotTargetMode = (mode: ShotTargetMode) => {
+    // Only update the mode for tab display — target stays unchanged until the user
+    // explicitly clicks a new position button.
     if (selectedShot) {
-      const normalizedSlot = normalizeShotTargetSlot(mode, selectedShot.targetSlot);
-      const goalSide = selectedShot.targetGoalSide;
-      const goal = goalSide === 'left'
-        ? {
-            x: boardConfig.fieldX - boardConfig.goalDepth,
-            y: boardConfig.fieldY,
-            width: boardConfig.goalDepth,
-            height: boardConfig.goalWidth,
-          }
-        : {
-            x: boardConfig.fieldX + boardConfig.fieldWidth,
-            y: boardConfig.fieldY,
-            width: boardConfig.goalDepth,
-            height: boardConfig.goalWidth,
-          };
-      const target = resolveShotTargetPoint(goal, goalSide, mode, normalizedSlot);
-
-      updateShot(selectedShot.id, {
-        target,
-        targetGoalSide: goalSide,
-        targetMode: mode,
-        targetSlot: normalizedSlot,
-      });
-      return;
+      updateShot(selectedShot.id, { targetMode: mode });
     }
 
     if (fiveGoalPositions !== (mode === 5)) {
