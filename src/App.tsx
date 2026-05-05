@@ -1048,6 +1048,7 @@ function App() {
   const setActiveBall = useBoardStore((state) => state.setActiveBall);
   const moveRod = useBoardStore((state) => state.moveRod);
   const cycleRodTilt = useBoardStore((state) => state.cycleRodTilt);
+  const manualTiltOverridesRef = useRef<Set<string>>(new Set());
   const addShot = useBoardStore((state) => state.addShot);
   const updateShot = useBoardStore((state) => state.updateShot);
   const removeShot = useBoardStore((state) => state.removeShot);
@@ -1099,6 +1100,11 @@ function App() {
 
   const possessionContext = useMemo(() => getBallPossessionContext(focusedBall ?? null), [focusedBall]);
 
+  // Reset manual tilt overrides whenever the ball moves to a different possession rod/zone
+  useEffect(() => {
+    manualTiltOverridesRef.current = new Set();
+  }, [possessionContext?.rodId, possessionContext?.zone]);
+
   const visibleRods = useMemo(() => {
     if (!possessionContext) {
       return rods;
@@ -1112,6 +1118,13 @@ function App() {
 
     return boardConfig.rods.reduce((accumulator, rod) => {
       const baseState = rods[rod.id];
+
+      // Manually overridden rods always show the store value
+      if (manualTiltOverridesRef.current.has(rod.id)) {
+        accumulator[rod.id] = baseState;
+        return accumulator;
+      }
+
       if (rod.id === possessionContext.rodId) {
         accumulator[rod.id] = baseState;
         return accumulator;
@@ -1131,6 +1144,11 @@ function App() {
       return accumulator;
     }, {} as Record<RodConfig['id'], RodState>);
   }, [possessionContext, rods]);
+
+  const handleCycleRodTilt = (rodId: RodConfig['id']) => {
+    manualTiltOverridesRef.current.add(rodId);
+    cycleRodTilt(rodId);
+  };
 
   const getBallFallTarget = (point: Point): Point => {
     const fieldBottom = boardConfig.fieldY + boardConfig.fieldHeight;
@@ -1798,7 +1816,7 @@ function App() {
             onStartBallDrag={startBallDrag}
             onStartRodDrag={startRodDrag}
             onNudgeRod={nudgeRod}
-            onCycleRodTilt={cycleRodTilt}
+            onCycleRodTilt={handleCycleRodTilt}
             viewBoxAttr={`${viewBoxState.x} ${viewBoxState.y} ${viewBoxState.width} ${viewBoxState.height}`}
           />
 
@@ -1845,7 +1863,7 @@ function App() {
             <div key={rod.id}>
               <span>{rod.label}</span>
               <span>{rods[rod.id].tilt}</span>
-              <button type="button" onClick={() => cycleRodTilt(rod.id)}>
+              <button type="button" onClick={() => handleCycleRodTilt(rod.id)}>
                 Kippen
               </button>
             </div>
