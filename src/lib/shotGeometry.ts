@@ -30,9 +30,10 @@ export function buildShotPathData(shot: ShotLine): string {
   const target = shot.target;
 
   if (shot.shotStyle === 'bank-top' || shot.shotStyle === 'bank-bottom') {
-    const axisY = shot.shotStyle === 'bank-top' ? boardConfig.fieldY : boardConfig.fieldY + boardConfig.fieldHeight;
-    const reflectedTarget = reflectAcrossHorizontal(target, axisY);
-    const bounce = lineIntersectionAtY(start, reflectedTarget, axisY);
+    const wallY = shot.shotStyle === 'bank-top' ? boardConfig.fieldY : boardConfig.fieldY + boardConfig.fieldHeight;
+    const reflectionAxisY = shot.shotStyle === 'bank-top' ? wallY + boardConfig.ballRadius : wallY - boardConfig.ballRadius;
+    const reflectedTarget = reflectAcrossHorizontal(target, reflectionAxisY);
+    const bounce = lineIntersectionAtY(start, reflectedTarget, reflectionAxisY);
 
     if (bounce) {
       return `M ${start.x} ${start.y} L ${bounce.x} ${bounce.y} L ${target.x} ${target.y}`;

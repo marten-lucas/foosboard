@@ -69,6 +69,19 @@ export function normalizeShotTargetSlot(mode: ShotTargetMode, slot: ShotTargetSl
   }
 }
 
+function resolveFiveSlotTargetY(goal: GoalRect, slotIndex: number, slotCount: number): number {
+  const edgeInset = Math.min(boardConfig.ballRadius, goal.height / 2);
+
+  if (slotCount <= 1) {
+    return goal.y + goal.height / 2;
+  }
+
+  const travel = Math.max(goal.height - edgeInset * 2, 0);
+  const step = travel / (slotCount - 1);
+
+  return goal.y + edgeInset + step * slotIndex;
+}
+
 export function resolveShotTargetPoint(goal: GoalRect, side: ShotGoalSide, mode: ShotTargetMode, slot: ShotTargetSlot): Point {
   const options = getShotTargetOptions(mode);
   const slotIndex = Math.max(
@@ -77,9 +90,10 @@ export function resolveShotTargetPoint(goal: GoalRect, side: ShotGoalSide, mode:
   );
   const segmentHeight = goal.height / (options.length + 1);
   const targetX = side === 'left' ? goal.x + goal.width : goal.x;
+  const targetY = mode === 5 ? resolveFiveSlotTargetY(goal, slotIndex, options.length) : goal.y + segmentHeight * (slotIndex + 1);
 
   return {
     x: targetX,
-    y: goal.y + segmentHeight * (slotIndex + 1),
+    y: targetY,
   };
 }
