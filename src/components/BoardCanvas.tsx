@@ -427,10 +427,6 @@ export function BoardCanvas({
                 {offsets.map((offset, index) => {
                   const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
                   const figureOpacity = normalizeTiltMode(rodState.tilt) === 'hochgestellt' ? 0.5 : 1;
-                  const handleFigureToggle = (event: React.SyntheticEvent) => {
-                    event.stopPropagation();
-                    onCycleRodTilt(rod.id);
-                  };
 
                   return (
                     <g key={`${rod.id}-${index}`} style={{ cursor: 'pointer' }}>
@@ -440,8 +436,7 @@ export function BoardCanvas({
                           y={offset - figureState.height * figureState.anchor.y}
                           width={figureState.width}
                           height={figureState.height}
-                          style={{ pointerEvents: 'auto', opacity: figureOpacity }}
-                          onClick={handleFigureToggle}
+                          style={{ pointerEvents: 'none', opacity: figureOpacity }}
                         >
                           <div
                             xmlns="http://www.w3.org/1999/xhtml"
@@ -495,6 +490,30 @@ export function BoardCanvas({
             />
           </g>
         ))}
+
+        {/* Tilt-Toggle-Hitflächen – nach den Kugel-Hitboxen gerendert, liegen im Z-Stack darüber */}
+        {boardConfig.rods.flatMap((rod) => {
+          const rodState = rods[rod.id];
+          const offsets = getRodOffsets(rod);
+          const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
+          if (!figureState.markup) return [];
+
+          return offsets.map((offset, index) => (
+            <rect
+              key={`${rod.id}-tilt-${index}`}
+              x={rod.x + getFigureForeignObjectX(figureState.width, figureState.anchor.x, rod.team === 'blue')}
+              y={rodState.y + offset - figureState.height * figureState.anchor.y}
+              width={figureState.width}
+              height={figureState.height}
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onCycleRodTilt(rod.id);
+              }}
+            />
+          ));
+        })}
 
       </svg>
     </div>

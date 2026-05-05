@@ -198,6 +198,6 @@ export function createDefaultScene(): SerializableScene {
     shots: [],
     guidesVisible: true,
     fiveGoalPositions: false,
-    activeShotColor: '#ff7a3d',
+    activeShotColor: '#e03131',
   };
 }

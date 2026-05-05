@@ -914,7 +914,7 @@ function App() {
   const frameThickness = TABLE_FRAME_THICKNESS_CM;
   const gripThickness = 4;
   const gripLength = 13;
-  const colorSwatches = ['#2e2e2e', '#868e96', '#fa5252', '#e64980', '#be4bdb', '#7950f2', '#4c6ef5', '#228be6', '#15aabf', '#12b886', '#40c057', '#82c91e', '#fab005', '#fd7e14'];
+  const colorSwatches = ['#e03131', '#ff6b6b', '#a61e4d', '#c2255c', '#9c36b5', '#cc5de8', '#5f3dc4', '#6741d9', '#1864ab', '#1971c2', '#339af0', '#0c8599', '#e67700', '#f08c00', '#ffd43b', '#e8590c', '#d9480f', '#dee2e6', '#868e96', '#343a40'];
   const previewRodExtension = Math.max(
     ...Object.values(tableDraft.rows).map((row) => Math.max((row.rodLength - tableDraft.fieldWidth) / 2, 0)),
     0,
@@ -1322,7 +1322,7 @@ function App() {
 
     const point = pointFromEvent(event as unknown as React.PointerEvent<SVGSVGElement>, svg, Boolean(isPortraitViewport));
 
-    if (isTouchInteraction || activeTool !== 'move') {
+    if (activeTool !== 'move') {
       if (ballId) {
         setActiveBall(ballId);
         setSelectedShotBallId(ballId);
