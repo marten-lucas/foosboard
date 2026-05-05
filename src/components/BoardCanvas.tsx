@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import { boardConfig, normalizeTiltMode, type BallTokenState, type RodConfig, type RodState, type ShotLine } from '../boardConfig';
 import { defaultTableDraft } from '../lib/tableLayout';
 import { getRodGeometry, getRodRowKey } from '../lib/rodLayout';
-import { buildShotPathData, getShotStrokeWidth } from '../lib/shotGeometry';
+import { buildShotPathData, getShotStrokeWidth, type ShotCollider } from '../lib/shotGeometry';
 import { buildTableSurfaceGeometry, TABLE_FRAME_THICKNESS_CM } from '../lib/tableSurface';
 import { TableGoalVisuals } from './TableGoalVisuals';
 import { SharedVisualDefs } from './SharedVisualDefs';
@@ -21,6 +21,13 @@ type LiveFigureState = {
   anchor: {
     x: number;
     y: number;
+  };
+  collision?: {
+    center: {
+      x: number;
+      y: number;
+    };
+    radius: number;
   };
 };
 
@@ -131,6 +138,34 @@ export function BoardCanvas({
   const ballTray = getBallTrayLayout();
   const renderBalls = balls;
   const selectedBall = selectedBallId ? balls.find((ball) => ball.id === selectedBallId) ?? null : null;
+  const downFigureState = liveFigureStates.unten;
+  const defaultColliderRadius = Math.max(Math.min(downFigureState.width, downFigureState.height) * 0.26, boardConfig.ballRadius * 0.8);
+  const shotColliders: ShotCollider[] = boardConfig.rods.flatMap((rod) => {
+    const rodState = rods[rod.id];
+    if (getFigureStateKey(rodState.tilt) !== 'unten') {
+      return [];
+    }
+
+    const offsets = getRodOffsets(rod);
+    const collisionCenter = downFigureState.collision?.center ?? { x: 0.5, y: 0.5 };
+    const collisionRadius = downFigureState.collision?.radius ?? defaultColliderRadius;
+
+    return offsets.map((offset) => {
+      const localX =
+        rod.team === 'blue'
+          ? (downFigureState.anchor.x - collisionCenter.x) * downFigureState.width
+          : (collisionCenter.x - downFigureState.anchor.x) * downFigureState.width;
+      const localY = (collisionCenter.y - downFigureState.anchor.y) * downFigureState.height;
+
+      return {
+        center: {
+          x: rod.x + localX,
+          y: rodState.y + offset + localY,
+        },
+        radius: collisionRadius,
+      } satisfies ShotCollider;
+    });
+  });
 
   return (
     <div className={`foosboard-board-wrap${isPortraitViewport ? ' foosboard-board-wrap--portrait' : ''}`}>
@@ -179,7 +214,7 @@ export function BoardCanvas({
         {shots.map((shot) => {
           const selected = selectedShotId === shot.id;
           const strokeWidth = getShotStrokeWidth() + (selected ? 2 : 0);
-          const pathData = buildShotPathData(shot);
+          const pathData = buildShotPathData(shot, shot.collisionEnabled ? shotColliders : []);
 
           return (
             <g
@@ -193,31 +228,17 @@ export function BoardCanvas({
               }}
               cursor="pointer"
             >
-              {shot.shotStyle === 'bank-top' || shot.shotStyle === 'bank-bottom' ? (
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke={shot.color}
-                  strokeWidth={strokeWidth}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                  clipPath="url(#fieldClip)"
-                  opacity={selected ? 1 : 0.92}
-                />
-              ) : (
-                <line
-                  x1={shot.start.x}
-                  y1={shot.start.y}
-                  x2={shot.target.x}
-                  y2={shot.target.y}
-                  stroke={shot.color}
-                  strokeWidth={strokeWidth}
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                  opacity={selected ? 1 : 0.92}
-                />
-              )}
+              <path
+                d={pathData}
+                fill="none"
+                stroke={shot.color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                clipPath="url(#fieldClip)"
+                opacity={selected ? 1 : 0.92}
+              />
               <circle cx={shot.target.x} cy={shot.target.y} r={selected ? 4.5 : 3.2} fill={shot.color} opacity={selected ? 1 : 0.92} />
             </g>
           );

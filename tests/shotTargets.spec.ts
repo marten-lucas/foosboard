@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ShotLine } from '../src/boardConfig';
 import { boardConfig } from '../src/boardConfig';
-import { buildShotPathData, getShotStrokeWidth } from '../src/lib/shotGeometry';
+import { buildShotPathData, getShotStrokeWidth, type ShotCollider } from '../src/lib/shotGeometry';
 import { resolveShotTargetPoint, type GoalRect } from '../src/lib/shotTargets';
 
 function extractPathPoints(pathData: string) {
@@ -44,5 +44,36 @@ describe('shot target geometry', () => {
     const [, , , bounceY] = extractPathPoints(pathData);
 
     expect(bounceY).toBeCloseTo(boardConfig.fieldY + getShotStrokeWidth() / 2, 5);
+  });
+
+  it('cuts the shot at first collision only when collision checking is enabled', () => {
+    const start = { x: 180, y: 220 };
+    const target = { x: 420, y: 220 };
+    const colliders: ShotCollider[] = [{ center: { x: 300, y: 220 }, radius: 14 }];
+
+    const collisionOnShot: ShotLine = {
+      id: 'collision-on',
+      kind: 'shot',
+      color: '#fff',
+      label: 'Shot 1',
+      start,
+      target,
+      shotStyle: 'straight',
+      collisionEnabled: true,
+    };
+
+    const collisionOffShot: ShotLine = {
+      ...collisionOnShot,
+      id: 'collision-off',
+      collisionEnabled: false,
+    };
+
+    const withCollision = buildShotPathData(collisionOnShot, colliders);
+    const withoutCollision = buildShotPathData(collisionOffShot, colliders);
+    const withCollisionPoints = extractPathPoints(withCollision);
+    const withoutCollisionPoints = extractPathPoints(withoutCollision);
+
+    expect(withCollisionPoints[2]).toBeLessThan(target.x);
+    expect(withoutCollisionPoints[2]).toBeCloseTo(target.x, 5);
   });
 });

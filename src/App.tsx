@@ -51,6 +51,13 @@ type FigurePlacement = {
     width: number;
     height: number;
   };
+  collision?: {
+    center: {
+      x: number;
+      y: number;
+    };
+    radius: number;
+  };
 };
 
 function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null, isPortraitViewport = false): Point {
@@ -575,7 +582,7 @@ function findSvgNodeByName(root: Element, targetName: string) {
   );
 }
 
-function getFigurePlacement(svgMarkup: string, anchorGroup: string): FigurePlacement {
+function getFigurePlacement(svgMarkup: string, anchorGroup: string, collisionGroup = ''): FigurePlacement {
   const fallback: FigurePlacement = {
     bounds: { width: 10, height: 20 },
     anchor: { x: 0.5, y: 0.5 },
@@ -605,6 +612,18 @@ function getFigurePlacement(svgMarkup: string, anchorGroup: string): FigurePlace
     const height = Math.max(assetBounds.maxY - assetBounds.minY, 1);
     const anchorNode = findSvgNodeByName(root, anchorGroup);
     const anchorBounds = anchorNode ? getNodeBounds(anchorNode) : null;
+    const collisionNode = collisionGroup ? findSvgNodeByName(root, collisionGroup) : null;
+    const collisionBounds = collisionNode ? getNodeBounds(collisionNode) : null;
+
+    const collision = collisionBounds
+      ? {
+          center: {
+            x: clamp(((collisionBounds.minX + collisionBounds.maxX) / 2 - assetBounds.minX) / width, 0, 1),
+            y: clamp(((collisionBounds.minY + collisionBounds.maxY) / 2 - assetBounds.minY) / height, 0, 1),
+          },
+          radius: Math.max(Math.max(collisionBounds.maxX - collisionBounds.minX, collisionBounds.maxY - collisionBounds.minY) / 2, 1),
+        }
+      : undefined;
 
     return {
       bounds: { width, height },
@@ -618,6 +637,7 @@ function getFigurePlacement(svgMarkup: string, anchorGroup: string): FigurePlace
             height: Math.max(anchorBounds.maxY - anchorBounds.minY, 1),
           }
         : undefined,
+      collision,
     };
   } catch {
     return fallback;
@@ -718,7 +738,7 @@ function buildLayerDataFromStoredAsset(svgMarkup: string, anchorGroup: string, c
   const geometryOptions = Array.from(
     new Set([anchorGroup, collisionGroup, ...(extractedLayer?.geometryOptions ?? fallbackOptions)].filter(Boolean)),
   );
-  const placement = getFigurePlacement(previewMarkup, anchorGroup);
+  const placement = getFigurePlacement(previewMarkup, anchorGroup, collisionGroup);
 
   return {
     preview: previewMarkup,
@@ -1498,7 +1518,7 @@ function App() {
       const assetMarkup = state?.assetId ? boardConfig.assets[state.assetId] || '' : '';
       const layerPreview = assetMarkup && state?.layer ? extractSvgLayerData(assetMarkup)[state.layer]?.preview || '' : '';
       const markup = layerPreview || (assetMarkup ? normalizeSvgMarkup(assetMarkup, 'xMidYMid meet', true, 0.08, 0) : '');
-      const placement = getFigurePlacement(markup, state?.anchorGroup || '');
+      const placement = getFigurePlacement(markup, state?.anchorGroup || '', state?.collisionGroup || '');
       const metrics = buildFigureRenderMetrics({
         state: {
           markup,
@@ -1518,6 +1538,12 @@ function App() {
         width: metrics.width,
         height: metrics.height,
         anchor: metrics.anchor,
+        collision: placement.collision
+          ? {
+              center: placement.collision.center,
+              radius: Math.max((placement.collision.radius / Math.max(placement.bounds.width, 1)) * metrics.width, 1),
+            }
+          : undefined,
       };
     };
 
