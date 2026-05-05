@@ -848,6 +848,17 @@ function App() {
   const [fallingBallId, setFallingBallId] = useState<string | null>(null);
   const fallTimerRef = useRef<number | null>(null);
 
+  // View transform for zoom / pan
+  const viewBoxRef = useRef({ x: 0, y: 0, width: boardConfig.width, height: boardConfig.height });
+  const [viewBoxState, setViewBoxState] = useState({ x: 0, y: 0, width: boardConfig.width, height: boardConfig.height });
+  const panPointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+
+  const setViewBox = (newVb: { x: number; y: number; width: number; height: number }) => {
+    viewBoxRef.current = newVb;
+    setViewBoxState(newVb);
+  };
+
   const updateRowConfig = (
     row: 'goalkeeper' | 'defense' | 'midfield' | 'offense',
     field: 'position' | 'playerCount' | 'spacing' | 'outerStop' | 'rodLength' | 'rodDiameter',
@@ -1154,6 +1165,75 @@ function App() {
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
+      // Pan / pinch: pointer tracked in panPointersRef (board background, not on a ball/rod)
+      if (panPointersRef.current.has(event.pointerId)) {
+        const svg = svgRef.current;
+        if (svg) {
+          const inv = svg.getScreenCTM()?.inverse();
+          if (inv) {
+            const screenToBoard = (cx: number, cy: number) => {
+              const pt = svg.createSVGPoint();
+              pt.x = cx;
+              pt.y = cy;
+              return pt.matrixTransform(inv);
+            };
+            const prev = panPointersRef.current.get(event.pointerId)!;
+            // Read the other pointer BEFORE updating this one
+            let otherPos: { clientX: number; clientY: number } | null = null;
+            for (const [id, pos] of panPointersRef.current.entries()) {
+              if (id !== event.pointerId) {
+                otherPos = pos;
+                break;
+              }
+            }
+            panPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+
+            if (!otherPos) {
+              // 1-finger pan: shift viewBox so the board point under the pointer stays fixed
+              const bp1 = screenToBoard(prev.clientX, prev.clientY);
+              const bp2 = screenToBoard(event.clientX, event.clientY);
+              const vb = viewBoxRef.current;
+              const newVb = { ...vb, x: vb.x - (bp2.x - bp1.x), y: vb.y - (bp2.y - bp1.y) };
+              viewBoxRef.current = newVb;
+              setViewBoxState(newVb);
+            } else {
+              // 2-finger pinch + pan
+              const prevCX = (prev.clientX + otherPos.clientX) / 2;
+              const prevCY = (prev.clientY + otherPos.clientY) / 2;
+              const prevDist = Math.hypot(prev.clientX - otherPos.clientX, prev.clientY - otherPos.clientY);
+              const currDist = Math.hypot(event.clientX - otherPos.clientX, event.clientY - otherPos.clientY);
+              const curCX = (event.clientX + otherPos.clientX) / 2;
+              const curCY = (event.clientY + otherPos.clientY) / 2;
+
+              if (prevDist >= 5) {
+                const f = currDist / prevDist;
+                const bPrev = screenToBoard(prevCX, prevCY);
+                const bCur = screenToBoard(curCX, curCY);
+                const vb = viewBoxRef.current;
+                const newWidth = Math.max(
+                  boardConfig.width * 0.15,
+                  Math.min(boardConfig.width * 2.5, vb.width / f),
+                );
+                const newHeight = newWidth * (boardConfig.height / boardConfig.width);
+                const actualF = vb.width / newWidth;
+                // Pan: shift viewBox so bPrev is now at bCur's position, then zoom around bCur
+                const tempX = vb.x + (bPrev.x - bCur.x);
+                const tempY = vb.y + (bPrev.y - bCur.y);
+                const newVb = {
+                  x: bCur.x - (bCur.x - tempX) / actualF,
+                  y: bCur.y - (bCur.y - tempY) / actualF,
+                  width: newWidth,
+                  height: newHeight,
+                };
+                viewBoxRef.current = newVb;
+                setViewBoxState(newVb);
+              }
+            }
+          }
+        }
+        return;
+      }
+
       const drag = dragRef.current;
       const svg = svgRef.current;
       if (!drag || !svg || drag.pointerId !== event.pointerId) {
@@ -1195,6 +1275,9 @@ function App() {
     };
 
     const handleUp = (event: PointerEvent) => {
+      // Always clean up pan tracking for this pointer
+      panPointersRef.current.delete(event.pointerId);
+
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) {
         const pendingPress = pendingBallPressRef.current;
@@ -1285,6 +1368,38 @@ function App() {
     };
   }, [isPortraitViewport, moveBall, moveRod, removeBall, setActiveBall]);
 
+  // Wheel zoom (desktop) – registered directly to avoid passive-listener constraints
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const inv = svg.getScreenCTM()?.inverse();
+      if (!inv) return;
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const boardPt = pt.matrixTransform(inv);
+      const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const vb = viewBoxRef.current;
+      const newWidth = Math.max(boardConfig.width * 0.15, Math.min(boardConfig.width * 2.5, vb.width / factor));
+      const newHeight = newWidth * (boardConfig.height / boardConfig.width);
+      const actualF = vb.width / newWidth;
+      const newVb = {
+        x: boardPt.x - (boardPt.x - vb.x) / actualF,
+        y: boardPt.y - (boardPt.y - vb.y) / actualF,
+        width: newWidth,
+        height: newHeight,
+      };
+      viewBoxRef.current = newVb;
+      setViewBoxState(newVb);
+    };
+
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', handleWheel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- uses only stable refs and module-level constants
+
   const handleBoardPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (dragRef.current?.kind === 'ball' && dragRef.current.pointerId === event.pointerId) {
       return;
@@ -1295,12 +1410,29 @@ function App() {
       return;
     }
 
+    // Double-tap on empty board to reset zoom/pan
+    const now = Date.now();
+    const lastTap = lastTapRef.current;
+    if (
+      lastTap &&
+      now - lastTap.time < 350 &&
+      Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 40
+    ) {
+      const defaultVb = { x: 0, y: 0, width: boardConfig.width, height: boardConfig.height };
+      setViewBox(defaultVb);
+      lastTapRef.current = null;
+      return;
+    }
+    lastTapRef.current = { time: now, x: event.clientX, y: event.clientY };
+
+    // Begin pan tracking for this pointer
+    event.preventDefault();
+    panPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+
     console.log('[foosboard] board pointerdown', {
       tool: activeTool,
       targetTestId: target?.getAttribute('data-testid') ?? null,
     });
-
-    return;
   };
 
   const startBallDrag = (event: React.PointerEvent<SVGCircleElement>, ballId: string | null, origin: Point) => {
@@ -1667,6 +1799,7 @@ function App() {
             onStartRodDrag={startRodDrag}
             onNudgeRod={nudgeRod}
             onCycleRodTilt={cycleRodTilt}
+            viewBoxAttr={`${viewBoxState.x} ${viewBoxState.y} ${viewBoxState.width} ${viewBoxState.height}`}
           />
 
       <section className="foosboard-hidden-ui" aria-label="Foosboard Steuerung">

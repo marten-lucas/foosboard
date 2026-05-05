@@ -67,6 +67,7 @@ type BoardCanvasProps = {
   onStartRodDrag: (rodId: RodConfig['id'], event: React.PointerEvent<SVGRectElement>) => void;
   onNudgeRod: (rodId: RodConfig['id'], direction: 'towards-top' | 'towards-bottom') => void;
   onCycleRodTilt: (rodId: RodConfig['id']) => void;
+  viewBoxAttr?: string;
 };
 
 function getFigureStateKey(tilt: RodState['tilt']): FigureStateKey {
@@ -123,6 +124,7 @@ export function BoardCanvas({
   onStartRodDrag,
   onNudgeRod,
   onCycleRodTilt,
+  viewBoxAttr,
 }: BoardCanvasProps) {
   const fieldWidthCm = boardConfig.settings?.field.widthCm ?? defaultTableDraft.fieldWidth;
   const tableSurface = buildTableSurfaceGeometry({
@@ -193,7 +195,7 @@ export function BoardCanvas({
         data-testid="board-svg"
         aria-label="Foosboard Spielfeld"
         className={`foosboard-board-svg${isPortraitViewport ? ' foosboard-board-svg--portrait' : ''}`}
-        viewBox={`0 0 ${boardConfig.width} ${boardConfig.height}`}
+        viewBox={viewBoxAttr ?? `0 0 ${boardConfig.width} ${boardConfig.height}`}
         preserveAspectRatio="xMidYMid meet"
         onPointerDown={onBoardPointerDown}
         style={{ touchAction: 'none' }}
