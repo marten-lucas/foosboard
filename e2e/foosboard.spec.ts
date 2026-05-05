@@ -162,6 +162,34 @@ test('saves and shares snapshots', async ({ page }) => {
   await expect(page.getByLabel('Share-Link')).toHaveValue(/scene=/);
 });
 
+test('share link encodes the scene and restores it when opened in a new tab', async ({ page, context }) => {
+  // Place a ball via the store so we have a deterministic scene
+  await page.evaluate(() => {
+    window.__foosboardStore?.getState().spawnBall({ x: 300, y: 300 });
+  });
+
+  // Generate the share link
+  await page.getByText('Teilen').dispatchEvent('click');
+  await expect(page).toHaveURL(/scene=/);
+
+  const shareUrl = page.url();
+  expect(shareUrl).toContain('scene=');
+
+  // Open the share URL in a new page (simulates a recipient opening the link)
+  const newPage = await context.newPage();
+  await newPage.goto(shareUrl);
+
+  // Wait for the board to be ready
+  await expect(newPage.getByTestId('board-svg')).toBeVisible({ timeout: 15_000 });
+  await expect(newPage.locator('.foosboard-live-field-asset svg').first()).toBeVisible({ timeout: 10_000 });
+
+  // The restored scene should contain at least one ball on the board
+  const ballCount = await newPage.evaluate(() => window.__foosboardStore?.getState().balls.length ?? 0);
+  expect(ballCount).toBeGreaterThan(0);
+
+  await newPage.close();
+});
+
 test('shows the field preview perfectly inside the frame', async ({ page }) => {
   await page.getByLabel('Tischauswahl öffnen').click();
   await page.getByText('Tische konfigurieren').click();

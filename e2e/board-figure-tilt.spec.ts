@@ -44,3 +44,29 @@ test('clicking and tapping a board figure cycles the rod tilt', async ({ page })
   await tiltToggle.click();
   await expect(readTilt(page, rodId)).resolves.toBe('neutral');
 });
+
+test('hochgestellt tilt state renders the figure at 0.5 opacity on the live board', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  const rodId = 'P2_2';
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(tiltToggle).toBeVisible();
+
+  // Cycle: neutral → front → back → hochgestellt
+  await tiltToggle.click(); // → front
+  await tiltToggle.click(); // → back
+  await tiltToggle.click(); // → hochgestellt
+
+  await expect(readTilt(page, rodId)).resolves.toBe('hochgestellt');
+
+  // The foreignObject for the figure should have 0.5 computed opacity
+  const opacity = await page
+    .locator(`[data-testid="rod-${rodId}"] foreignObject`)
+    .first()
+    .evaluate((el) => getComputedStyle(el).opacity);
+  expect(parseFloat(opacity)).toBeCloseTo(0.5, 1);
+});
