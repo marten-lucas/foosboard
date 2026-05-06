@@ -329,6 +329,7 @@ export function BoardCanvas({
           const rodCapWidth = Math.max(rodGeometry.rodStrokeWidth * 1.55, 9);
           const rodCapHeight = Math.max(rodGeometry.rodStrokeWidth * 0.45, 3.2);
           const nudgeHitWidth = Math.max(liveGripThickness * 1.4, rodGeometry.rodStrokeWidth * 6, 16);
+          const rodDragHitWidth = Math.max(liveGripThickness * 1.15, rodGeometry.rodStrokeWidth * 4, 12);
           const topExposedEnd = tableSurface.frame.y;
           const bottomExposedStart = tableSurface.frame.y + tableSurface.frame.height;
           const topNudgeY = rod.team === 'blue' ? rodTop + gripLength : rodTop;
@@ -354,6 +355,18 @@ export function BoardCanvas({
                 width={rodGeometry.rodStrokeWidth}
                 height={rodBottom - rodTop}
                 fill="url(#rodGradient)"
+                onPointerDown={(event) => onStartRodDrag(rod.id, event)}
+                cursor={isPortraitViewport ? 'ew-resize' : 'ns-resize'}
+              />
+              <rect
+                data-testid={`rod-${rod.id}-drag-hitarea`}
+                x={-rodDragHitWidth / 2}
+                y={rodTop}
+                width={rodDragHitWidth}
+                height={rodBottom - rodTop}
+                fill="transparent"
+                onPointerDown={(event) => onStartRodDrag(rod.id, event)}
+                cursor={isPortraitViewport ? 'ew-resize' : 'ns-resize'}
               />
               <rect
                 x={-rodCapWidth / 2}
