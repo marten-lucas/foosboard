@@ -76,6 +76,16 @@ export default defineConfig({
       testMatch: /cross-browser\.spec\.ts|responsive-board\.spec\.ts|portrait-rod-drag\.spec\.ts/,
     },
     {
+      // iPhone SE — compact iOS Safari simulation (matches reported device class)
+      name: 'iphone-se-safari',
+      use: {
+        ...devices['iPhone SE'],
+        browserName: 'webkit',
+        launchOptions: {},
+      },
+      testMatch: /cross-browser\.spec\.ts|responsive-board\.spec\.ts|portrait-rod-drag\.spec\.ts/,
+    },
+    {
       // iPad Pro 11 landscape — Safari simulation
       name: 'tablet-safari',
       use: {

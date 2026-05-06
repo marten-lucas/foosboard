@@ -61,39 +61,47 @@ type FigurePlacement = {
 };
 
 function pointFromEvent(event: Pick<React.PointerEvent, 'clientX' | 'clientY'>, svg: SVGSVGElement | null, isPortraitViewport = false): Point {
-  if (!svg) {
-    return { x: 0, y: 0 };
-  }
+  return pointFromClientCoordinates(event.clientX, event.clientY, svg, isPortraitViewport);
+}
 
-  if (typeof svg.createSVGPoint === 'function' && typeof svg.getScreenCTM === 'function') {
-    const svgPoint = svg.createSVGPoint();
-    svgPoint.x = event.clientX;
-    svgPoint.y = event.clientY;
-    const screenMatrix = svg.getScreenCTM();
-
-    if (screenMatrix) {
-      const transformed = svgPoint.matrixTransform(screenMatrix.inverse());
-      return {
-        x: transformed.x,
-        y: transformed.y,
-      };
-    }
-  }
-
-  const rect = svg.getBoundingClientRect();
-  const normalizedX = (event.clientX - rect.left) / rect.width;
-  const normalizedY = (event.clientY - rect.top) / rect.height;
-
-  if (isPortraitViewport) {
+function getSvgViewBox(svg: SVGSVGElement) {
+  const vb = svg.viewBox?.baseVal;
+  if (vb && Number.isFinite(vb.width) && Number.isFinite(vb.height) && vb.width > 0 && vb.height > 0) {
     return {
-      x: normalizedY * boardConfig.width,
-      y: (1 - normalizedX) * boardConfig.height,
+      x: vb.x,
+      y: vb.y,
+      width: vb.width,
+      height: vb.height,
     };
   }
 
   return {
-    x: normalizedX * boardConfig.width,
-    y: normalizedY * boardConfig.height,
+    x: 0,
+    y: 0,
+    width: boardConfig.width,
+    height: boardConfig.height,
+  };
+}
+
+function pointFromClientCoordinates(clientX: number, clientY: number, svg: SVGSVGElement | null, isPortraitViewport = false): Point {
+  if (!svg) {
+    return { x: 0, y: 0 };
+  }
+
+  const rect = svg.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return { x: 0, y: 0 };
+  }
+
+  const normalizedX = (clientX - rect.left) / rect.width;
+  const normalizedY = (clientY - rect.top) / rect.height;
+  const viewBox = getSvgViewBox(svg);
+  const boardRatioX = isPortraitViewport ? normalizedY : normalizedX;
+  const boardRatioY = isPortraitViewport ? 1 - normalizedX : normalizedY;
+
+  return {
+    x: viewBox.x + boardRatioX * viewBox.width,
+    y: viewBox.y + boardRatioY * viewBox.height,
   };
 }
 
@@ -1187,65 +1195,58 @@ function App() {
       if (panPointersRef.current.has(event.pointerId)) {
         const svg = svgRef.current;
         if (svg) {
-          const inv = svg.getScreenCTM()?.inverse();
-          if (inv) {
-            const screenToBoard = (cx: number, cy: number) => {
-              const pt = svg.createSVGPoint();
-              pt.x = cx;
-              pt.y = cy;
-              return pt.matrixTransform(inv);
-            };
-            const prev = panPointersRef.current.get(event.pointerId)!;
-            // Read the other pointer BEFORE updating this one
-            let otherPos: { clientX: number; clientY: number } | null = null;
-            for (const [id, pos] of panPointersRef.current.entries()) {
-              if (id !== event.pointerId) {
-                otherPos = pos;
-                break;
-              }
+          const screenToBoard = (cx: number, cy: number) =>
+            pointFromClientCoordinates(cx, cy, svg, Boolean(isPortraitViewport));
+          const prev = panPointersRef.current.get(event.pointerId)!;
+          // Read the other pointer BEFORE updating this one
+          let otherPos: { clientX: number; clientY: number } | null = null;
+          for (const [id, pos] of panPointersRef.current.entries()) {
+            if (id !== event.pointerId) {
+              otherPos = pos;
+              break;
             }
-            panPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+          }
+          panPointersRef.current.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
 
-            if (!otherPos) {
-              // 1-finger pan: shift viewBox so the board point under the pointer stays fixed
-              const bp1 = screenToBoard(prev.clientX, prev.clientY);
-              const bp2 = screenToBoard(event.clientX, event.clientY);
+          if (!otherPos) {
+            // 1-finger pan: shift viewBox so the board point under the pointer stays fixed
+            const bp1 = screenToBoard(prev.clientX, prev.clientY);
+            const bp2 = screenToBoard(event.clientX, event.clientY);
+            const vb = viewBoxRef.current;
+            const newVb = { ...vb, x: vb.x - (bp2.x - bp1.x), y: vb.y - (bp2.y - bp1.y) };
+            viewBoxRef.current = newVb;
+            setViewBoxState(newVb);
+          } else {
+            // 2-finger pinch + pan
+            const prevCX = (prev.clientX + otherPos.clientX) / 2;
+            const prevCY = (prev.clientY + otherPos.clientY) / 2;
+            const prevDist = Math.hypot(prev.clientX - otherPos.clientX, prev.clientY - otherPos.clientY);
+            const currDist = Math.hypot(event.clientX - otherPos.clientX, event.clientY - otherPos.clientY);
+            const curCX = (event.clientX + otherPos.clientX) / 2;
+            const curCY = (event.clientY + otherPos.clientY) / 2;
+
+            if (prevDist >= 5) {
+              const f = currDist / prevDist;
+              const bPrev = screenToBoard(prevCX, prevCY);
+              const bCur = screenToBoard(curCX, curCY);
               const vb = viewBoxRef.current;
-              const newVb = { ...vb, x: vb.x - (bp2.x - bp1.x), y: vb.y - (bp2.y - bp1.y) };
+              const newWidth = Math.max(
+                boardConfig.width * 0.15,
+                Math.min(boardConfig.width * 2.5, vb.width / f),
+              );
+              const newHeight = newWidth * (boardConfig.height / boardConfig.width);
+              const actualF = vb.width / newWidth;
+              // Pan: shift viewBox so bPrev is now at bCur's position, then zoom around bCur
+              const tempX = vb.x + (bPrev.x - bCur.x);
+              const tempY = vb.y + (bPrev.y - bCur.y);
+              const newVb = {
+                x: bCur.x - (bCur.x - tempX) / actualF,
+                y: bCur.y - (bCur.y - tempY) / actualF,
+                width: newWidth,
+                height: newHeight,
+              };
               viewBoxRef.current = newVb;
               setViewBoxState(newVb);
-            } else {
-              // 2-finger pinch + pan
-              const prevCX = (prev.clientX + otherPos.clientX) / 2;
-              const prevCY = (prev.clientY + otherPos.clientY) / 2;
-              const prevDist = Math.hypot(prev.clientX - otherPos.clientX, prev.clientY - otherPos.clientY);
-              const currDist = Math.hypot(event.clientX - otherPos.clientX, event.clientY - otherPos.clientY);
-              const curCX = (event.clientX + otherPos.clientX) / 2;
-              const curCY = (event.clientY + otherPos.clientY) / 2;
-
-              if (prevDist >= 5) {
-                const f = currDist / prevDist;
-                const bPrev = screenToBoard(prevCX, prevCY);
-                const bCur = screenToBoard(curCX, curCY);
-                const vb = viewBoxRef.current;
-                const newWidth = Math.max(
-                  boardConfig.width * 0.15,
-                  Math.min(boardConfig.width * 2.5, vb.width / f),
-                );
-                const newHeight = newWidth * (boardConfig.height / boardConfig.width);
-                const actualF = vb.width / newWidth;
-                // Pan: shift viewBox so bPrev is now at bCur's position, then zoom around bCur
-                const tempX = vb.x + (bPrev.x - bCur.x);
-                const tempY = vb.y + (bPrev.y - bCur.y);
-                const newVb = {
-                  x: bCur.x - (bCur.x - tempX) / actualF,
-                  y: bCur.y - (bCur.y - tempY) / actualF,
-                  width: newWidth,
-                  height: newHeight,
-                };
-                viewBoxRef.current = newVb;
-                setViewBoxState(newVb);
-              }
             }
           }
         }
@@ -1393,12 +1394,7 @@ function App() {
 
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const inv = svg.getScreenCTM()?.inverse();
-      if (!inv) return;
-      const pt = svg.createSVGPoint();
-      pt.x = event.clientX;
-      pt.y = event.clientY;
-      const boardPt = pt.matrixTransform(inv);
+      const boardPt = pointFromClientCoordinates(event.clientX, event.clientY, svg, Boolean(isPortraitViewport));
       const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
       const vb = viewBoxRef.current;
       const newWidth = Math.max(boardConfig.width * 0.15, Math.min(boardConfig.width * 2.5, vb.width / factor));
@@ -1416,7 +1412,7 @@ function App() {
 
     svg.addEventListener('wheel', handleWheel, { passive: false });
     return () => svg.removeEventListener('wheel', handleWheel);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- uses only stable refs and module-level constants
+  }, [isPortraitViewport]); // eslint-disable-line react-hooks/exhaustive-deps -- uses only stable refs and module-level constants
 
   const handleBoardPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (dragRef.current?.kind === 'ball' && dragRef.current.pointerId === event.pointerId) {

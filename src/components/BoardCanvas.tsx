@@ -442,12 +442,13 @@ export function BoardCanvas({
                 {offsets.map((offset, index) => {
                   const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
                   const figureOpacity = normalizeTiltMode(rodState.tilt) === 'hochgestellt' ? 0.5 : 1;
+                  const shouldMirrorFigure = rod.team === 'blue' && !isPortraitViewport;
 
                   return (
                     <g key={`${rod.id}-${index}`} style={{ cursor: 'pointer' }}>
                       {figureState.markup ? (
                         <foreignObject
-                          x={getFigureForeignObjectX(figureState.width, figureState.anchor.x, rod.team === 'blue')}
+                          x={getFigureForeignObjectX(figureState.width, figureState.anchor.x, shouldMirrorFigure)}
                           y={offset - figureState.height * figureState.anchor.y}
                           width={figureState.width}
                           height={figureState.height}
@@ -455,7 +456,7 @@ export function BoardCanvas({
                         >
                           <div
                             xmlns="http://www.w3.org/1999/xhtml"
-                            className={`foosboard-figure-svg-colorized${rod.team === 'blue' ? ' foosboard-figure-svg-colorized--mirrored' : ''}`}
+                            className={`foosboard-figure-svg-colorized${shouldMirrorFigure ? ' foosboard-figure-svg-colorized--mirrored' : ''}`}
                             style={{ color: rod.figureColor, pointerEvents: 'none' }}
                             dangerouslySetInnerHTML={{ __html: figureState.markup }}
                           />
@@ -511,13 +512,14 @@ export function BoardCanvas({
           const rodState = rods[rod.id];
           const offsets = getRodOffsets(rod);
           const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
+          const shouldMirrorFigure = rod.team === 'blue' && !isPortraitViewport;
           if (!figureState.markup) return [];
 
           return offsets.map((offset, index) => (
             <rect
               key={`${rod.id}-tilt-${index}`}
               data-testid={`rod-${rod.id}-tilt-${index}`}
-              x={rod.x + getFigureForeignObjectX(figureState.width, figureState.anchor.x, rod.team === 'blue')}
+              x={rod.x + getFigureForeignObjectX(figureState.width, figureState.anchor.x, shouldMirrorFigure)}
               y={rodState.y + offset - figureState.height * figureState.anchor.y}
               width={figureState.width}
               height={figureState.height}
