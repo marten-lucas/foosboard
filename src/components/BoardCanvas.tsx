@@ -35,6 +35,29 @@ function getFigureForeignObjectX(width: number, anchorX: number, mirrored: boole
   return -width * (mirrored ? 1 - anchorX : anchorX);
 }
 
+function withAlpha(color: string, alpha: number) {
+  const normalizedAlpha = Math.max(0, Math.min(1, alpha));
+  const hex = color.trim();
+
+  // #RRGGBB and #RGB are the common formats in this project.
+  if (/^#[0-9a-f]{6}$/i.test(hex)) {
+    const r = Number.parseInt(hex.slice(1, 3), 16);
+    const g = Number.parseInt(hex.slice(3, 5), 16);
+    const b = Number.parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${normalizedAlpha})`;
+  }
+
+  if (/^#[0-9a-f]{3}$/i.test(hex)) {
+    const r = Number.parseInt(hex[1] + hex[1], 16);
+    const g = Number.parseInt(hex[2] + hex[2], 16);
+    const b = Number.parseInt(hex[3] + hex[3], 16);
+    return `rgba(${r}, ${g}, ${b}, ${normalizedAlpha})`;
+  }
+
+  // Fallback for non-hex color strings.
+  return color;
+}
+
 type BoardCanvasProps = {
   svgRef: RefObject<SVGSVGElement | null>;
   isMobileViewport: boolean;
@@ -450,7 +473,8 @@ export function BoardCanvas({
               <g transform={`translate(0 ${rodState.y})`}>
                 {offsets.map((offset, index) => {
                   const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
-                  const figureOpacity = normalizeTiltMode(rodState.tilt) === 'hochgestellt' ? 0.5 : 1;
+                  const isHighTilt = normalizeTiltMode(rodState.tilt) === 'hochgestellt';
+                  const figureColor = isHighTilt ? withAlpha(rod.figureColor, 0.5) : rod.figureColor;
                   const shouldMirrorFigure = false;
 
                   return (
@@ -466,7 +490,7 @@ export function BoardCanvas({
                           <div
                             xmlns="http://www.w3.org/1999/xhtml"
                             className={`foosboard-figure-svg-colorized${shouldMirrorFigure ? ' foosboard-figure-svg-colorized--mirrored' : ''}`}
-                            style={{ color: rod.figureColor, pointerEvents: 'none', opacity: figureOpacity }}
+                            style={{ color: figureColor, pointerEvents: 'none' }}
                             dangerouslySetInnerHTML={{ __html: figureState.markup }}
                           />
                         </foreignObject>

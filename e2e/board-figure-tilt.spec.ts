@@ -9,6 +9,25 @@ async function readTilt(page: import('@playwright/test').Page, rodId: string) {
   }, rodId);
 }
 
+async function readFigureColorAlpha(page: import('@playwright/test').Page, rodId: string) {
+  return page
+    .locator(`[data-testid="rod-${rodId}"] .foosboard-figure-svg-colorized`)
+    .first()
+    .evaluate((element) => {
+      const color = getComputedStyle(element).color;
+      const match = color.match(/rgba?\(([^)]+)\)/i);
+      if (!match) {
+        return 1;
+      }
+      const parts = match[1].split(',').map((part) => part.trim());
+      if (parts.length < 4) {
+        return 1;
+      }
+      const alpha = Number.parseFloat(parts[3]);
+      return Number.isFinite(alpha) ? alpha : 1;
+    });
+}
+
 test('clicking and tapping a board figure cycles the rod tilt', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.addInitScript(() => {
@@ -32,26 +51,20 @@ test('clicking and tapping a board figure cycles the rod tilt', async ({ page })
   await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect(readTilt(page, rodId)).resolves.toBe('back');
 
-  const figureOpacity = await page
-    .locator(`[data-testid="rod-${rodId}"] .foosboard-figure-svg-colorized`)
-    .first()
-    .evaluate((element) => getComputedStyle(element).opacity);
-  expect(figureOpacity).toBe('1');
+  const figureAlpha = await readFigureColorAlpha(page, rodId);
+  expect(figureAlpha).toBeCloseTo(1, 2);
 
   await tiltToggle.click();
   await expect(readTilt(page, rodId)).resolves.toBe('hochgestellt');
 
-  const highOpacity = await page
-    .locator(`[data-testid="rod-${rodId}"] .foosboard-figure-svg-colorized`)
-    .first()
-    .evaluate((element) => getComputedStyle(element).opacity);
-  expect(highOpacity).toBe('0.5');
+  const highAlpha = await readFigureColorAlpha(page, rodId);
+  expect(highAlpha).toBeCloseTo(0.5, 1);
 
   await tiltToggle.click();
   await expect(readTilt(page, rodId)).resolves.toBe('neutral');
 });
 
-test('hochgestellt tilt state renders the figure at 0.5 opacity on the live board', async ({ page }) => {
+test('hochgestellt tilt state renders the figure color at 0.5 alpha on the live board', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.addInitScript(() => {
     window.localStorage.clear();
@@ -69,12 +82,8 @@ test('hochgestellt tilt state renders the figure at 0.5 opacity on the live boar
 
   await expect(readTilt(page, rodId)).resolves.toBe('hochgestellt');
 
-  // The rendered figure wrapper should have 0.5 computed opacity
-  const opacity = await page
-    .locator(`[data-testid="rod-${rodId}"] .foosboard-figure-svg-colorized`)
-    .first()
-    .evaluate((el) => getComputedStyle(el).opacity);
-  expect(parseFloat(opacity)).toBeCloseTo(0.5, 1);
+  const alpha = await readFigureColorAlpha(page, rodId);
+  expect(alpha).toBeCloseTo(0.5, 1);
 
 });
 

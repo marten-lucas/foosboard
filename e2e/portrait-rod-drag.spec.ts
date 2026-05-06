@@ -467,3 +467,131 @@ test('portrait figure stays aligned with rod after tilt change', async ({ page }
   // Figure must be a reasonable visual size (not collapsed to near-zero)
   expect(metrics.figureSize).toBeGreaterThan(8);
 });
+
+test('iphone hoch tilt keeps figure aligned and scaled in portrait', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'iphone-se-safari' && testInfo.project.name !== 'mobile-safari', 'iPhone WebKit only');
+
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  const rodId = 'P2_2';
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('data-portrait-viewport', 'true');
+  await expect(tiltToggle).toBeVisible();
+
+  await tiltToggle.click(); // front
+
+  const front = await page.evaluate((currentRodId) => {
+    const rod = document.querySelector(`[data-testid="rod-${currentRodId}"]`) as SVGGElement | null;
+    const figure = rod?.querySelector('foreignObject') as SVGForeignObjectElement | null;
+    if (!rod || !figure) {
+      return null;
+    }
+    const rodBox = rod.getBoundingClientRect();
+    const figureBox = figure.getBoundingClientRect();
+    return {
+      rodCenter: rodBox.top + rodBox.height / 2,
+      figureTop: figureBox.top,
+      figureBottom: figureBox.bottom,
+      figureHeight: figureBox.height,
+    };
+  }, rodId);
+  expect(front).not.toBeNull();
+
+  await tiltToggle.click(); // back
+  await tiltToggle.click(); // hochgestellt
+
+  const highTilt = await page.evaluate((currentRodId) => {
+    const rod = document.querySelector(`[data-testid="rod-${currentRodId}"]`) as SVGGElement | null;
+    const figure = rod?.querySelector('foreignObject') as SVGForeignObjectElement | null;
+    const store = (window as Record<string, unknown>).__foosboardStore as { getState: () => { rods: Record<string, { tilt: string }> } } | undefined;
+    if (!rod || !figure) {
+      return null;
+    }
+    const rodBox = rod.getBoundingClientRect();
+    const figureBox = figure.getBoundingClientRect();
+    return {
+      tilt: store?.getState().rods[currentRodId]?.tilt ?? '',
+      rodCenter: rodBox.top + rodBox.height / 2,
+      figureTop: figureBox.top,
+      figureBottom: figureBox.bottom,
+      figureHeight: figureBox.height,
+    };
+  }, rodId);
+  expect(highTilt).not.toBeNull();
+  expect(highTilt?.tilt).toBe('hochgestellt');
+
+  const frontAligned = (front?.rodCenter ?? 0) >= (front?.figureTop ?? 0) - 8 && (front?.rodCenter ?? 0) <= (front?.figureBottom ?? 0) + 8;
+  expect(frontAligned).toBe(true);
+  const highAligned = (highTilt?.rodCenter ?? 0) >= (highTilt?.figureTop ?? 0) - 8 && (highTilt?.rodCenter ?? 0) <= (highTilt?.figureBottom ?? 0) + 8;
+  expect(highAligned).toBe(true);
+  expect(highTilt?.figureHeight ?? 0).toBeGreaterThan((front?.figureHeight ?? 0) * 0.9);
+  expect(highTilt?.figureHeight ?? 0).toBeLessThan((front?.figureHeight ?? 0) * 1.1);
+});
+
+test('iphone hoch tilt keeps figure aligned and scaled in landscape', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'iphone-se-safari' && testInfo.project.name !== 'mobile-safari', 'iPhone WebKit only');
+
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  const rodId = 'P2_2';
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('data-portrait-viewport', 'false');
+  await expect(tiltToggle).toBeVisible();
+
+  await tiltToggle.click(); // front
+
+  const front = await page.evaluate((currentRodId) => {
+    const rod = document.querySelector(`[data-testid="rod-${currentRodId}"]`) as SVGGElement | null;
+    const figure = rod?.querySelector('foreignObject') as SVGForeignObjectElement | null;
+    if (!rod || !figure) {
+      return null;
+    }
+    const rodBox = rod.getBoundingClientRect();
+    const figureBox = figure.getBoundingClientRect();
+    return {
+      rodCenter: rodBox.left + rodBox.width / 2,
+      figureStart: figureBox.left,
+      figureEnd: figureBox.right,
+      figureSize: figureBox.width,
+    };
+  }, rodId);
+  expect(front).not.toBeNull();
+
+  await tiltToggle.click(); // back
+  await tiltToggle.click(); // hochgestellt
+
+  const highTilt = await page.evaluate((currentRodId) => {
+    const rod = document.querySelector(`[data-testid="rod-${currentRodId}"]`) as SVGGElement | null;
+    const figure = rod?.querySelector('foreignObject') as SVGForeignObjectElement | null;
+    const store = (window as Record<string, unknown>).__foosboardStore as { getState: () => { rods: Record<string, { tilt: string }> } } | undefined;
+    if (!rod || !figure) {
+      return null;
+    }
+    const rodBox = rod.getBoundingClientRect();
+    const figureBox = figure.getBoundingClientRect();
+    return {
+      tilt: store?.getState().rods[currentRodId]?.tilt ?? '',
+      rodCenter: rodBox.left + rodBox.width / 2,
+      figureStart: figureBox.left,
+      figureEnd: figureBox.right,
+      figureSize: figureBox.width,
+    };
+  }, rodId);
+  expect(highTilt).not.toBeNull();
+  expect(highTilt?.tilt).toBe('hochgestellt');
+
+  const frontAligned = (front?.rodCenter ?? 0) >= (front?.figureStart ?? 0) - 8 && (front?.rodCenter ?? 0) <= (front?.figureEnd ?? 0) + 8;
+  expect(frontAligned).toBe(true);
+  const highAligned = (highTilt?.rodCenter ?? 0) >= (highTilt?.figureStart ?? 0) - 8 && (highTilt?.rodCenter ?? 0) <= (highTilt?.figureEnd ?? 0) + 8;
+  expect(highAligned).toBe(true);
+  expect(highTilt?.figureSize ?? 0).toBeGreaterThan((front?.figureSize ?? 0) * 0.9);
+  expect(highTilt?.figureSize ?? 0).toBeLessThan((front?.figureSize ?? 0) * 1.1);
+});
