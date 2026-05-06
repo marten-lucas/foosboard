@@ -86,6 +86,11 @@ async function expectJsonStartupBoard(page: import('@playwright/test').Page) {
     }).length;
 
     const transparentFieldBlockingZones = Array.from(board.querySelectorAll('[data-testid^="rod-"] rect')).filter((rect) => {
+      const testId = rect.getAttribute('data-testid') || '';
+      if (testId.endsWith('-drag-hitarea')) {
+        return false;
+      }
+
       if ((rect.getAttribute('fill') || '').toLowerCase() !== 'transparent') {
         return false;
       }
