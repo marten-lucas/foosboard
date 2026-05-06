@@ -513,15 +513,12 @@ export function BoardCanvas({
 
         {/* Tilt-Toggle-Hitflächen – nach den Kugel-Hitboxen gerendert, liegen im Z-Stack darüber */}
         {boardConfig.rods.flatMap((rod) => {
-          if (isTouchInteraction && isMobileViewport && !isPortraitViewport) {
-            return [];
-          }
-
           const rodState = rods[rod.id];
           const offsets = getRodOffsets(rod);
           const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
           const shouldMirrorFigure = false;
           if (!figureState.markup) return [];
+          const isLandscapeMobileTouch = isTouchInteraction && isMobileViewport && !isPortraitViewport;
 
           return offsets.map((offset, index) => (
             <rect
@@ -535,10 +532,29 @@ export function BoardCanvas({
               style={{ cursor: 'pointer' }}
               onPointerDown={(event) => {
                 event.stopPropagation();
+                if (isLandscapeMobileTouch) {
+                  // In landscape mobile: forward pointer to rod drag so the rod stays draggable,
+                  // and detect a short tap via native pointerup to cycle tilt.
+                  const el = event.currentTarget as SVGRectElement;
+                  const startX = event.clientX;
+                  const startY = event.clientY;
+                  const handleTap = (ue: PointerEvent) => {
+                    el.removeEventListener('pointerup', handleTap);
+                    el.removeEventListener('pointercancel', handleTap);
+                    if (ue.type === 'pointerup' && Math.hypot(ue.clientX - startX, ue.clientY - startY) < 8) {
+                      onCycleRodTilt(rod.id);
+                    }
+                  };
+                  el.addEventListener('pointerup', handleTap);
+                  el.addEventListener('pointercancel', handleTap);
+                  onStartRodDrag(rod.id, event);
+                }
               }}
               onClick={(event) => {
                 event.stopPropagation();
-                onCycleRodTilt(rod.id);
+                if (!isLandscapeMobileTouch) {
+                  onCycleRodTilt(rod.id);
+                }
               }}
             />
           ));

@@ -88,8 +88,10 @@ body {
     max-width: calc(100vh - 220px);
     max-width: calc(100dvh - 220px);
     max-height: none;
-    transform: rotate(90deg) scale(0.83);
+    transform: rotate(90deg) scale(0.83) translateZ(0);
+    -webkit-transform: rotate(90deg) scale(0.83) translateZ(0);
     transform-origin: center;
+    will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {

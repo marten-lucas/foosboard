@@ -304,3 +304,166 @@ test('landscape rod drag follows vertical touch pointer gesture', async ({ page 
   const afterY = await page.evaluate(() => window.__foosboardStore?.getState().rods.P2_2.y ?? 0);
   expect(Math.abs(afterY - beforeY)).toBeGreaterThan(20);
 });
+
+// ── Landscape tilt ─────────────────────────────────────────────────────────────
+
+test('landscape mobile: tapping figure tilt overlay cycles rod tilt', async ({ page }, testInfo) => {
+  const supportsTouch = Boolean((testInfo.project.use as { hasTouch?: boolean }).hasTouch);
+  test.skip(!supportsTouch, 'Requires a touch-capable project');
+
+  // iPhone SE landscape: 667×375 — keeps viewport width ≤ 768px so isMobileViewport fires
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  const rodId = 'P2_2';
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('data-portrait-viewport', 'false');
+
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(tiltToggle).toBeVisible();
+
+  const tiltBefore = await page.evaluate((id) => {
+    const store = (window as Record<string, unknown>).__foosboardStore as { getState: () => { rods: Record<string, { tilt: string }> } } | undefined;
+    return store?.getState().rods[id]?.tilt ?? '';
+  }, rodId);
+  expect(tiltBefore).toBe('neutral');
+
+  const box = await tiltToggle.boundingBox();
+  expect(box).not.toBeNull();
+  const cx = box!.x + box!.width / 2;
+  const cy = box!.y + box!.height / 2;
+  const pointerId = 780;
+
+  // Dispatch a touch tap: pointerdown then pointerup on the same element (no movement)
+  // pointerup must go to the element so the native tap-detection listener fires, then it
+  // bubbles to window to also end the rod-drag state.
+  await tiltToggle.dispatchEvent('pointerdown', {
+    pointerId,
+    pointerType: 'touch',
+    isPrimary: true,
+    clientX: cx,
+    clientY: cy,
+    bubbles: true,
+  });
+  await tiltToggle.dispatchEvent('pointerup', {
+    pointerId,
+    pointerType: 'touch',
+    isPrimary: true,
+    clientX: cx,
+    clientY: cy,
+    bubbles: true,
+  });
+
+  const tiltAfter = await page.evaluate((id) => {
+    const store = (window as Record<string, unknown>).__foosboardStore as { getState: () => { rods: Record<string, { tilt: string }> } } | undefined;
+    return store?.getState().rods[id]?.tilt ?? '';
+  }, rodId);
+  expect(tiltAfter).toBe('front');
+});
+
+test('landscape mobile: dragging figure tilt overlay area moves rod', async ({ page }, testInfo) => {
+  const supportsTouch = Boolean((testInfo.project.use as { hasTouch?: boolean }).hasTouch);
+  test.skip(!supportsTouch, 'Requires a touch-capable project');
+
+  // iPhone SE landscape: 667×375 — keeps viewport width ≤ 768px so isMobileViewport fires
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  const rodId = 'P2_2';
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('data-portrait-viewport', 'false');
+
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(tiltToggle).toBeVisible();
+
+  const beforeY = await page.evaluate(() => window.__foosboardStore?.getState().rods.P2_2.y ?? 0);
+
+  const box = await tiltToggle.boundingBox();
+  expect(box).not.toBeNull();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  const pointerId = 781;
+
+  await tiltToggle.dispatchEvent('pointerdown', {
+    pointerId,
+    pointerType: 'touch',
+    isPrimary: true,
+    clientX: startX,
+    clientY: startY,
+    bubbles: true,
+  });
+
+  // Move significantly — should move rod, not cycle tilt
+  await page.evaluate(({ moveX, moveY, pid }) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      pointerId: pid,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: moveX,
+      clientY: moveY,
+      bubbles: true,
+    }));
+  }, { moveX: startX, moveY: startY + 80, pid: pointerId });
+
+  await page.evaluate(({ endX, endY, pid }) => {
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      pointerId: pid,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: endX,
+      clientY: endY,
+      bubbles: true,
+    }));
+  }, { endX: startX, endY: startY + 80, pid: pointerId });
+
+  const afterY = await page.evaluate(() => window.__foosboardStore?.getState().rods.P2_2.y ?? 0);
+  expect(Math.abs(afterY - beforeY)).toBeGreaterThan(20);
+});
+
+// ── Portrait figure alignment after tilt ───────────────────────────────────────
+
+test('portrait figure stays aligned with rod after tilt change', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  await expect(page.getByTestId('board-svg')).toHaveAttribute('data-portrait-viewport', 'true');
+
+  const rodId = 'P2_2';
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(tiltToggle).toBeVisible();
+
+  // Cycle tilt to 'front'
+  await tiltToggle.click();
+
+  // After tilt change, figure must remain aligned with the rod
+  const metrics = await page.evaluate((currentRodId) => {
+    const rod = document.querySelector(`[data-testid="rod-${currentRodId}"]`) as SVGGElement | null;
+    const figure = rod?.querySelector('foreignObject') as SVGForeignObjectElement | null;
+    if (!rod || !figure) return { aligned: false, missing: true, figureSize: 0 };
+
+    const rodBox = rod.getBoundingClientRect();
+    const figureBox = figure.getBoundingClientRect();
+    const rodIsHorizontal = rodBox.width > rodBox.height;
+    const rodCenter = rodIsHorizontal ? rodBox.top + rodBox.height / 2 : rodBox.left + rodBox.width / 2;
+    const figureStart = rodIsHorizontal ? figureBox.top : figureBox.left;
+    const figureEnd = rodIsHorizontal ? figureBox.bottom : figureBox.right;
+    const aligned = rodCenter >= figureStart - 6 && rodCenter <= figureEnd + 6;
+    return {
+      aligned,
+      missing: false,
+      figureSize: rodIsHorizontal ? figureBox.height : figureBox.width,
+    };
+  }, rodId);
+
+  expect(metrics.missing).toBe(false);
+  expect(metrics.aligned).toBe(true);
+  // Figure must be a reasonable visual size (not collapsed to near-zero)
+  expect(metrics.figureSize).toBeGreaterThan(8);
+});
