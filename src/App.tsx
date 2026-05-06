@@ -1790,7 +1790,9 @@ function App() {
         <main className={`foosboard-stage${selectedShotBallId ? ' foosboard-stage--with-shot-drawer' : ''}`}>
           <BoardCanvas
             svgRef={svgRef}
+            isMobileViewport={Boolean(isMobile)}
             isPortraitViewport={Boolean(isPortraitViewport)}
+            isTouchInteraction={Boolean(isTouchInteraction)}
             balls={boardBalls}
             shots={shots}
             draggingBallId={draggingBallId}

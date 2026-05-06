@@ -37,7 +37,9 @@ function getFigureForeignObjectX(width: number, anchorX: number, mirrored: boole
 
 type BoardCanvasProps = {
   svgRef: RefObject<SVGSVGElement | null>;
+  isMobileViewport: boolean;
   isPortraitViewport: boolean;
+  isTouchInteraction: boolean;
   balls: BallTokenState[];
   shots: ShotLine[];
   draggingBallId: string | null;
@@ -94,7 +96,9 @@ function getRodOffsets(rod: RodConfig): number[] {
 
 export function BoardCanvas({
   svgRef,
+  isMobileViewport,
   isPortraitViewport,
+  isTouchInteraction,
   balls,
   shots,
   draggingBallId,
@@ -452,12 +456,12 @@ export function BoardCanvas({
                           y={offset - figureState.height * figureState.anchor.y}
                           width={figureState.width}
                           height={figureState.height}
-                          style={{ pointerEvents: 'none', opacity: figureOpacity }}
+                          style={{ pointerEvents: 'none' }}
                         >
                           <div
                             xmlns="http://www.w3.org/1999/xhtml"
                             className={`foosboard-figure-svg-colorized${shouldMirrorFigure ? ' foosboard-figure-svg-colorized--mirrored' : ''}`}
-                            style={{ color: rod.figureColor, pointerEvents: 'none' }}
+                            style={{ color: rod.figureColor, pointerEvents: 'none', opacity: figureOpacity }}
                             dangerouslySetInnerHTML={{ __html: figureState.markup }}
                           />
                         </foreignObject>
@@ -509,6 +513,10 @@ export function BoardCanvas({
 
         {/* Tilt-Toggle-Hitflächen – nach den Kugel-Hitboxen gerendert, liegen im Z-Stack darüber */}
         {boardConfig.rods.flatMap((rod) => {
+          if (isTouchInteraction && isMobileViewport && !isPortraitViewport) {
+            return [];
+          }
+
           const rodState = rods[rod.id];
           const offsets = getRodOffsets(rod);
           const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
