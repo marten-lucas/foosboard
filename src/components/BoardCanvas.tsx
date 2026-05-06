@@ -79,8 +79,13 @@ function getFigureStateKey(tilt: RodState['tilt']): FigureStateKey {
     return 'nachVorn';
   }
 
-  if (normalizedTilt === 'back' || normalizedTilt === 'hochgestellt') {
+  if (normalizedTilt === 'back') {
     return 'nachHinten';
+  }
+
+  // hochgestellt = forward figure at 50 % opacity (same markup/dimensions as nachVorn)
+  if (normalizedTilt === 'hochgestellt') {
+    return 'nachVorn';
   }
 
   return 'unten';

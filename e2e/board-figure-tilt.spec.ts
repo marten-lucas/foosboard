@@ -75,4 +75,43 @@ test('hochgestellt tilt state renders the figure at 0.5 opacity on the live boar
     .first()
     .evaluate((el) => getComputedStyle(el).opacity);
   expect(parseFloat(opacity)).toBeCloseTo(0.5, 1);
+
+});
+
+test('hochgestellt figure height matches forward-tilt figure height, not backward-tilt', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+  await page.goto('/');
+
+  const rodId = 'P2_2';
+  const tiltToggle = page.locator(`[data-testid="rod-${rodId}-tilt-0"]`);
+  await expect(tiltToggle).toBeVisible();
+
+  const getFigureHeight = () =>
+    page
+      .locator(`[data-testid="rod-${rodId}"] foreignObject`)
+      .first()
+      .getAttribute('height')
+      .then((h) => parseFloat(h ?? '0'));
+
+  // Measure forward-tilt (nachVorn) height
+  await tiltToggle.click(); // → front
+  const nachVornHeight = await getFigureHeight();
+
+  // Measure backward-tilt (nachHinten) height
+  await tiltToggle.click(); // → back
+  const nachHintenHeight = await getFigureHeight();
+
+  // Cycle to hochgestellt
+  await tiltToggle.click(); // → hochgestellt
+  const hochgestelltHeight = await getFigureHeight();
+
+  // hochgestellt must use the forward-tilt figure (same height as nachVorn)
+  expect(hochgestelltHeight).toBeCloseTo(nachVornHeight, 0);
+  // And must NOT match nachHinten (which is significantly larger)
+  if (Math.abs(nachHintenHeight - nachVornHeight) > 2) {
+    expect(Math.abs(hochgestelltHeight - nachHintenHeight)).toBeGreaterThan(2);
+  }
 });

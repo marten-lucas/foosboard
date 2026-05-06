@@ -17,7 +17,7 @@ export type FigurePreviewTiltState = FigureTiltState | 'hochgestellt';
 
 export function resolveFigurePreviewTiltState(tiltState: FigurePreviewTiltState): FigureTiltState {
   if (tiltState === 'hochgestellt') {
-    return 'nachHinten';
+    return 'nachVorn'; // hochgestellt shares the forward figure at 50 % opacity
   }
 
   return tiltState;
