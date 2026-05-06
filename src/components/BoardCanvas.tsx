@@ -442,7 +442,7 @@ export function BoardCanvas({
                 {offsets.map((offset, index) => {
                   const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
                   const figureOpacity = normalizeTiltMode(rodState.tilt) === 'hochgestellt' ? 0.5 : 1;
-                  const shouldMirrorFigure = rod.team === 'blue' && !isPortraitViewport;
+                  const shouldMirrorFigure = false;
 
                   return (
                     <g key={`${rod.id}-${index}`} style={{ cursor: 'pointer' }}>
@@ -512,7 +512,7 @@ export function BoardCanvas({
           const rodState = rods[rod.id];
           const offsets = getRodOffsets(rod);
           const figureState = liveFigureStates[getFigureStateKey(rodState.tilt)];
-          const shouldMirrorFigure = rod.team === 'blue' && !isPortraitViewport;
+          const shouldMirrorFigure = false;
           if (!figureState.markup) return [];
 
           return offsets.map((offset, index) => (
